@@ -9,7 +9,7 @@ function App() {
       <Routes>
         <Route path="/" element={<LoginPage />} />
         <Route path="/admin" element={<AdminDashboardPage />} />
-        <Route path="/admin/menus" element={<AdminMenuListPage />} />
+        <Route path="/admin/platos" element={<AdminMenuListPage />} />
       </Routes>
     </BrowserRouter>
   )

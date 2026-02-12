@@ -8,7 +8,7 @@ export default function AdminMenuListPage() {
 
         {/* HEADER */}
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-6">
-          <h1 className="text-xl sm:text-2xl font-bold">Menús</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">Platos</h1>
 
           <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto">
             Crear Menú

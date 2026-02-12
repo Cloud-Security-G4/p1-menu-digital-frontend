@@ -16,7 +16,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
                 <main className="p-6 bg-gray-100 flex-1">
                     <div className="mb-4">
-                        <Link to="/admin/menus">Menús</Link>
+                        <Link to="/admin/platos">Platos</Link>
                     </div>
                     {children}
                 </main>
