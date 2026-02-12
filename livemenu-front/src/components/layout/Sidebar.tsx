@@ -32,6 +32,8 @@ export default function Sidebar() {
 
                 <SidebarItem icon={<LayoutDashboard />} label="Dashboard" collapsed={collapsed} to="/admin" />
 
+                <SidebarItem icon={<Menu />} label="Mi restaurante" collapsed={collapsed} to="/admin/restaurant" />
+
                 <SidebarItem icon={<Menu />} label="Platos" collapsed={collapsed} to="/admin/platos" />
 
                 <SidebarItem icon={<List />} label="Categorías" collapsed={collapsed} />
