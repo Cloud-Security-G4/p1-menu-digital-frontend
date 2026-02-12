@@ -22,21 +22,23 @@ export default function Sidebar() {
 
             {/* Logo */}
             {!collapsed && (
+                <Link to="/admin" className="block">
                 <h2 className="text-2xl font-bold mb-8">
                     LiveMenu
                 </h2>
+                </Link>
             )}
 
             {/* Menu */}
             <nav className="space-y-4">
 
-                <SidebarItem icon={<LayoutDashboard />} label="Dashboard" collapsed={collapsed} to="/admin" />
+                {/* <SidebarItem icon={<LayoutDashboard />} label="Dashboard" collapsed={collapsed} to="/admin" /> */}
 
                 <SidebarItem icon={<Menu />} label="Mi restaurante" collapsed={collapsed} to="/admin/restaurant" />
 
                 <SidebarItem icon={<Menu />} label="Platos" collapsed={collapsed} to="/admin/platos" />
 
-                <SidebarItem icon={<List />} label="Categorías" collapsed={collapsed} />
+                <SidebarItem icon={<List />} label="Categorías" collapsed={collapsed} to="/admin/categorias" />
 
                 <SidebarItem icon={<Package />} label="Productos" collapsed={collapsed} />
 
