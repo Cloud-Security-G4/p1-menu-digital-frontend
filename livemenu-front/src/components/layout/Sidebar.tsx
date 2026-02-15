@@ -1,4 +1,4 @@
-import { LayoutDashboard, Menu, List, Package } from "lucide-react"
+import { LayoutDashboard, Menu, List, Package, HamburgerIcon, Soup, Store } from "lucide-react"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 
@@ -34,15 +34,15 @@ export default function Sidebar() {
 
                 {/* <SidebarItem icon={<LayoutDashboard />} label="Dashboard" collapsed={collapsed} to="/admin" /> */}
 
-                <SidebarItem icon={<Menu />} label="Mi restaurante" collapsed={collapsed} to="/admin/restaurant" />
+                {/* <SidebarItem icon={<Menu />} label="Mi restaurante" collapsed={collapsed} to="/admin/restaurant" /> */}
 
-                <SidebarItem icon={<Menu />} label="Mi restaurante" collapsed={collapsed} to="/admin/restaurant" />
+                <SidebarItem icon={<Store />} label="Mi restaurante" collapsed={collapsed} to="/admin/restaurant" />
 
-                <SidebarItem icon={<Menu />} label="Platos" collapsed={collapsed} to="/admin/platos" />
+                <SidebarItem icon={<Soup />} label="Platos" collapsed={collapsed} to="/admin/platos" />
 
                 <SidebarItem icon={<List />} label="Categorías" collapsed={collapsed} to="/admin/categorias" />
 
-                <SidebarItem icon={<Package />} label="Productos" collapsed={collapsed} />
+                {/* <SidebarItem icon={<Package />} label="Productos" collapsed={collapsed} /> */}
 
             </nav>
 

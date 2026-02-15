@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import AdminLayout from "../../components/layout/AdminLayout"
 import { dishMock, type DishMock } from "../../mocks/dishMock"
 
+// Dishes admin: list, filters, and CRUD UI
 export default function AdminMenuListPage() {
   const categories = [
     { id: "all", name: "Todas" },
@@ -205,33 +206,42 @@ export default function AdminMenuListPage() {
 
         {/* FILTERS */}
         <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por nombre o descripción"
-            className="p-2 border rounded"
-          />
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="p-2 border rounded"
-          >
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={availabilityFilter}
-            onChange={(e) => setAvailabilityFilter(e.target.value)}
-            className="p-2 border rounded"
-          >
-            <option value="all">Todos</option>
-            <option value="available">Disponibles</option>
-            <option value="unavailable">No disponibles</option>
-          </select>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Nombre</label>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por nombre o descripción"
+              className="w-full p-2 border rounded"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Categoría</label>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Disponibilidad</label>
+            <select
+              value={availabilityFilter}
+              onChange={(e) => setAvailabilityFilter(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              <option value="all">Todos</option>
+              <option value="available">Disponibles</option>
+              <option value="unavailable">No disponibles</option>
+            </select>
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -393,12 +403,21 @@ export default function AdminMenuListPage() {
 
               <div className="mt-4 flex items-center justify-between text-sm">
                 <span className="font-semibold">Precio: ${dish.price.toFixed(2)}</span>
-                <button
-                  onClick={() => handleAvailability(dish.id)}
-                  className="text-blue-600 hover:underline"
-                >
-                  Cambiar disponibilidad
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Disponibilidad</span>
+                  <button
+                    type="button"
+                    onClick={() => handleAvailability(dish.id)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${dish.available ? "bg-blue-600" : "bg-gray-300"}`}
+                    role="switch"
+                    aria-checked={dish.available}
+                    aria-label="Cambiar disponibilidad"
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${dish.available ? "translate-x-6" : "translate-x-1"}`}
+                    />
+                  </button>
+                </div>
               </div>
 
               <div className="mt-3">

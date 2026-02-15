@@ -1,9 +1,12 @@
-import { login } from "../services/authService"
+import { login, register } from "../services/authService"
+import { useNavigate } from "react-router-dom"
 import { useState } from "react"
 
 
+// login + registration in one screen
 export default function LoginPage() {
 
+    const navigate = useNavigate()
     const [loading, setLoading] = useState(false)
     const [isRegister, setIsRegister] = useState(false)
     const [fullName, setFullName] = useState("")
@@ -12,6 +15,30 @@ export default function LoginPage() {
     const [confirmPassword, setConfirmPassword] = useState("")
     const [emailError, setEmailError] = useState("")
     const [passwordError, setPasswordError] = useState("")
+    const [authError, setAuthError] = useState("")
+
+    const getErrorMessage = (error: unknown) => {
+        if (error instanceof Error) {
+            const raw = error.message
+            try {
+                const parsed = JSON.parse(raw) as { message?: string }
+                return parsed?.message || "Credenciales inválidas"
+            } catch {
+                return raw || "Credenciales inválidas"
+            }
+        }
+        return "Credenciales inválidas"
+    }
+
+    const handleAuthSuccess = (data: any) => {
+        if (data?.token) {
+            localStorage.setItem("authToken", data.token)
+        }
+        if (data?.user) {
+            localStorage.setItem("authUser", JSON.stringify(data.user))
+        }
+        navigate("/admin")
+    }
 
     const handleLogin = async () => {
         const trimmedEmail = email.trim()
@@ -23,12 +50,13 @@ export default function LoginPage() {
 
         setLoading(true)
         setEmailError("")
+        setAuthError("")
 
         try {
             const data = await login(trimmedEmail, password)
-            console.log("Respuesta API:", data)
+            handleAuthSuccess(data)
         } catch (error) {
-            console.error(error)
+            setAuthError(getErrorMessage(error))
         } finally {
             setLoading(false)
         }
@@ -55,7 +83,8 @@ export default function LoginPage() {
         setPasswordError("")
 
         try {
-            console.log("Registro:", { fullName, email: trimmedEmail })
+            const data = await register(fullName.trim(), trimmedEmail, password)
+            handleAuthSuccess(data)
         } catch (error) {
             console.error(error)
         } finally {
@@ -67,7 +96,7 @@ export default function LoginPage() {
     return (
         <div className="flex h-screen">
 
-            {/* LEFT SIDE */}
+            {/* Left marketing panel */}
             <div className="hidden md:flex w-1/2 bg-gradient-to-br from-blue-600 to-indigo-900 text-white items-center justify-center p-10">
                 <div>
                     <h1 className="text-4xl font-bold mb-4">
@@ -81,7 +110,7 @@ export default function LoginPage() {
             </div>
 
 
-            {/* RIGHT SIDE */}
+            {/* Auth form panel */}
             <div className="flex w-full md:w-1/2 items-center justify-center bg-gray-100">
 
                 <div className="bg-white p-8 rounded-xl shadow-md w-80">
@@ -111,6 +140,7 @@ export default function LoginPage() {
                         onChange={(e) => {
                             setEmail(e.target.value)
                             if (emailError) setEmailError("")
+                            if (authError) setAuthError("")
                         }}
                         aria-invalid={emailError ? "true" : "false"}
                     />
@@ -128,6 +158,7 @@ export default function LoginPage() {
                         onChange={(e) => {
                             setPassword(e.target.value)
                             if (passwordError) setPasswordError("")
+                            if (authError) setAuthError("")
                         }}
                     />
 
@@ -147,6 +178,11 @@ export default function LoginPage() {
                     {passwordError && (
                         <p className="mb-3 text-sm text-red-600">
                             {passwordError}
+                        </p>
+                    )}
+                    {authError && !isRegister && (
+                        <p className="mb-3 text-sm text-red-600">
+                            {authError}
                         </p>
                     )}
 

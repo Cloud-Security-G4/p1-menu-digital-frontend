@@ -1,78 +1,71 @@
-import { useEffect, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { useEffect, useMemo, useState } from "react"
+import { Link, useNavigate, useParams } from "react-router-dom"
 import AdminLayout from "../../components/layout/AdminLayout"
-import { restaurantsMock } from "../../mocks/restaurantMock"
+import {
+    createRestaurant,
+    getRestaurants,
+    updateRestaurant,
+    type Restaurant,
+    type RestaurantPayload,
+} from "../../services/restaurantService"
 
-type RestaurantProfile = {
-    id: string
-    logoUrl: string
-    name: string
-    description: string
-    hours: string
-    phone: string
-    email: string
-    address: string
-}
-
-const emptyProfile: Omit<RestaurantProfile, "id"> = {
-    logoUrl: "",
+const emptyProfile: RestaurantPayload = {
+    logo: "",
     name: "",
     description: "",
-    hours: "",
+    hours: {},
     phone: "",
-    email: "",
     address: "",
 }
 
-const restaurantsKey = "restaurants"
-const legacyKey = "restaurantProfile"
-
-const loadRestaurants = (): RestaurantProfile[] => {
-    const stored = localStorage.getItem(restaurantsKey)
-    if (stored) {
-        try {
-            const parsed = JSON.parse(stored) as RestaurantProfile[]
-            return Array.isArray(parsed) ? parsed : []
-        } catch {
-            return []
-        }
-    }
-
-    const legacy = localStorage.getItem(legacyKey)
-    if (legacy) {
-        try {
-            const parsedLegacy = JSON.parse(legacy) as Omit<RestaurantProfile, "id">
-            const migrated = [{ id: "default", ...emptyProfile, ...parsedLegacy }]
-            localStorage.setItem(restaurantsKey, JSON.stringify(migrated))
-            return migrated
-        } catch {
-            return []
-        }
-    }
-
-    return restaurantsMock
-}
-
-export default function AdminRestaurantEditPage() {
+// Restaurant form
+export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "edit" }) {
     const { id } = useParams()
-    const [profile, setProfile] = useState<RestaurantProfile>({
+    const navigate = useNavigate()
+    const isCreateMode = useMemo(() => mode === "create" || id === "nuevo", [mode, id])
+    const [profile, setProfile] = useState<Restaurant>({
         id: id || "default",
         ...emptyProfile,
     })
-    const [restaurants, setRestaurants] = useState<RestaurantProfile[]>([])
     const [saved, setSaved] = useState(false)
     const [logoError, setLogoError] = useState("")
+    const [error, setError] = useState("")
+    const days = [
+        { key: "monday", label: "Lunes" },
+        { key: "tuesday", label: "Martes" },
+        { key: "wednesday", label: "Miércoles" },
+        { key: "thursday", label: "Jueves" },
+        { key: "friday", label: "Viernes" },
+        { key: "saturday", label: "Sábado" },
+        { key: "sunday", label: "Domingo" },
+    ]
 
     useEffect(() => {
-        const items = loadRestaurants()
-        setRestaurants(items)
-        const match = items.find((item) => item.id === (id || "default"))
-        if (match) {
-            setProfile({ ...emptyProfile, ...match, id: match.id })
+        const loadData = async () => {
+            try {
+                const data = await getRestaurants()
+                const items = Array.isArray(data) ? data : data?.data || []
+                if (!isCreateMode) {
+                    const match = items.find((item: Restaurant) => item.id === (id || "default"))
+                    if (match) {
+                        setProfile({
+                            ...emptyProfile,
+                            ...match,
+                            id: match.id,
+                            logo: match.logo || "",
+                        })
+                    }
+                } else {
+                    setProfile({ id: `rest-${Date.now()}`, ...emptyProfile })
+                }
+            } catch (err) {
+                setError(err instanceof Error ? err.message : "Error cargando restaurante.")
+            }
         }
-    }, [id])
+        loadData()
+    }, [id, isCreateMode])
 
-    const handleChange = (field: keyof RestaurantProfile, value: string) => {
+    const handleChange = (field: keyof RestaurantPayload | "email", value: string) => {
         setProfile((prev) => ({ ...prev, [field]: value }))
         if (saved) setSaved(false)
     }
@@ -94,19 +87,67 @@ export default function AdminRestaurantEditPage() {
             const result = typeof reader.result === "string" ? reader.result : ""
             if (result) {
                 setLogoError("")
-                setProfile((prev) => ({ ...prev, logoUrl: result }))
+                setProfile((prev) => ({ ...prev, logo: result }))
             }
         }
         reader.readAsDataURL(file)
     }
 
-    const handleSave = () => {
-        const updated = restaurants.some((item) => item.id === profile.id)
-            ? restaurants.map((item) => (item.id === profile.id ? profile : item))
-            : [...restaurants, profile]
-        localStorage.setItem(restaurantsKey, JSON.stringify(updated))
-        setRestaurants(updated)
-        setSaved(true)
+    const updateHoursForDay = (dayKey: string, ranges: { open: string; close: string }[]) => {
+        setProfile((prev) => ({
+            ...prev,
+            hours: {
+                ...prev.hours,
+                [dayKey]: ranges,
+            },
+        }))
+    }
+
+    const addRange = (dayKey: string) => {
+        const current = profile.hours?.[dayKey] || []
+        updateHoursForDay(dayKey, [...current, { open: "08:00", close: "17:00" }])
+    }
+
+    const updateRange = (
+        dayKey: string,
+        index: number,
+        field: "open" | "close",
+        value: string
+    ) => {
+        const current = profile.hours?.[dayKey] || []
+        const updated = current.map((range, idx) =>
+            idx === index ? { ...range, [field]: value } : range
+        )
+        updateHoursForDay(dayKey, updated)
+    }
+
+    const removeRange = (dayKey: string, index: number) => {
+        const current = profile.hours?.[dayKey] || []
+        const updated = current.filter((_, idx) => idx !== index)
+        updateHoursForDay(dayKey, updated)
+    }
+
+    const handleSave = async () => {
+        setError("")
+        try {
+            const payload: RestaurantPayload = {
+                name: profile.name,
+                description: profile.description,
+                phone: profile.phone,
+                address: profile.address,
+                hours: profile.hours,
+                logo: profile.logo || null,
+            }
+            if (isCreateMode) {
+                await createRestaurant(payload)
+                navigate("/admin/restaurant", { state: { toast: "Restaurante creado." } })
+            } else {
+                await updateRestaurant(profile.id, payload)
+                setSaved(true)
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Error guardando restaurante.")
+        }
     }
 
     return (
@@ -115,7 +156,7 @@ export default function AdminRestaurantEditPage() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h2 className="text-xl sm:text-2xl font-bold">
-                            Editar restaurante
+                            {isCreateMode ? "Crear restaurante" : "Editar restaurante"}
                         </h2>
                         <p className="text-sm text-gray-600">
                             Actualiza la información visible del restaurante.
@@ -133,10 +174,16 @@ export default function AdminRestaurantEditPage() {
                             onClick={handleSave}
                             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
                         >
-                            Guardar cambios
+                            {isCreateMode ? "Crear restaurante" : "Guardar cambios"}
                         </button>
                     </div>
                 </div>
+
+                {error && (
+                    <div className="bg-red-50 text-red-700 px-4 py-2 rounded">
+                        {error}
+                    </div>
+                )}
 
                 {saved && (
                     <div className="bg-green-50 text-green-700 px-4 py-2 rounded">
@@ -152,9 +199,9 @@ export default function AdminRestaurantEditPage() {
                             </label>
                             <input
                                 type="text"
-                                value={profile.logoUrl}
+                                value={profile.logo || ""}
                                 onChange={(e) => {
-                                    handleChange("logoUrl", e.target.value)
+                                    handleChange("logo", e.target.value)
                                     if (logoError) setLogoError("")
                                 }}
                                 className={`w-full p-2 border rounded ${logoError ? "border-red-500" : "border-gray-300"}`}
@@ -210,13 +257,79 @@ export default function AdminRestaurantEditPage() {
                             <label className="block text-sm font-medium mb-1">
                                 Horarios
                             </label>
-                            <input
-                                type="text"
-                                value={profile.hours}
-                                onChange={(e) => handleChange("hours", e.target.value)}
-                                className="w-full p-2 border rounded"
-                                placeholder="Lun-Dom 09:00 - 22:00"
-                            />
+                            <div className="space-y-3">
+                                {days.map((day) => {
+                                    const ranges = profile.hours?.[day.key] || []
+                                    return (
+                                        <div key={day.key} className="border rounded p-3">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-medium text-sm">
+                                                    {day.label}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addRange(day.key)}
+                                                    className="text-xs text-blue-600 hover:underline"
+                                                >
+                                                    Agregar horario
+                                                </button>
+                                            </div>
+
+                                            {ranges.length === 0 ? (
+                                                <p className="text-xs text-gray-500 mt-2">
+                                                    Cerrado
+                                                </p>
+                                            ) : (
+                                                <div className="mt-2 space-y-2">
+                                                    {ranges.map((range, index) => (
+                                                        <div
+                                                            key={`${day.key}-${index}`}
+                                                            className="flex flex-col sm:flex-row gap-2 items-center"
+                                                        >
+                                                            <input
+                                                                type="time"
+                                                                value={range.open}
+                                                                onChange={(e) =>
+                                                                    updateRange(
+                                                                        day.key,
+                                                                        index,
+                                                                        "open",
+                                                                        e.target.value
+                                                                    )
+                                                                }
+                                                                className="p-2 border rounded w-full sm:w-32"
+                                                            />
+                                                            <span className="text-xs text-gray-500">
+                                                                a
+                                                            </span>
+                                                            <input
+                                                                type="time"
+                                                                value={range.close}
+                                                                onChange={(e) =>
+                                                                    updateRange(
+                                                                        day.key,
+                                                                        index,
+                                                                        "close",
+                                                                        e.target.value
+                                                                    )
+                                                                }
+                                                                className="p-2 border rounded w-full sm:w-32"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeRange(day.key, index)}
+                                                                className="text-xs text-red-600 hover:underline"
+                                                            >
+                                                                Quitar
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )
+                                })}
+                            </div>
                         </div>
 
                         <div>
@@ -229,19 +342,6 @@ export default function AdminRestaurantEditPage() {
                                 onChange={(e) => handleChange("phone", e.target.value)}
                                 className="w-full p-2 border rounded"
                                 placeholder="+51 999 999 999"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium mb-1">
-                                Email
-                            </label>
-                            <input
-                                type="email"
-                                value={profile.email}
-                                onChange={(e) => handleChange("email", e.target.value)}
-                                className="w-full p-2 border rounded"
-                                placeholder="correo@restaurante.com"
                             />
                         </div>
 
@@ -266,9 +366,9 @@ export default function AdminRestaurantEditPage() {
 
                         <div className="flex items-start gap-4">
                             <div className="w-20 h-20 rounded bg-gray-100 flex items-center justify-center overflow-hidden">
-                                {profile.logoUrl ? (
+                                {profile.logo ? (
                                     <img
-                                        src={profile.logoUrl}
+                                        src={profile.logo}
                                         alt="Logo del restaurante"
                                         className="w-full h-full object-cover"
                                     />
@@ -292,16 +392,16 @@ export default function AdminRestaurantEditPage() {
                         <div className="mt-4 text-sm space-y-2">
                             <p>
                                 <span className="font-medium">Horarios:</span>{" "}
-                                {profile.hours || "Sin definir"}
+                                {Object.keys(profile.hours || {}).length === 0 ? "Sin definir" : "Definido"}
                             </p>
                             <p>
                                 <span className="font-medium">Teléfono:</span>{" "}
                                 {profile.phone || "Sin definir"}
                             </p>
-                            <p>
+                            {/* <p>
                                 <span className="font-medium">Email:</span>{" "}
                                 {profile.email || "Sin definir"}
-                            </p>
+                            </p> */}
                             <p>
                                 <span className="font-medium">Dirección:</span>{" "}
                                 {profile.address || "Sin definir"}

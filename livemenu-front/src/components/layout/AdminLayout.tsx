@@ -3,6 +3,7 @@ import Sidebar from "./Sidebar"
 import Navbar from "./Navbar"
 
 
+// sidebar + navbar + content
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
 
     return (
