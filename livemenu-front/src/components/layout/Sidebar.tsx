@@ -1,4 +1,4 @@
-import { LayoutDashboard, Menu, List, Package, HamburgerIcon, Soup, Store } from "lucide-react"
+import { List, Soup, Store, QrCode } from "lucide-react"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 
@@ -42,7 +42,7 @@ export default function Sidebar() {
 
                 <SidebarItem icon={<List />} label="Categorías" collapsed={collapsed} to="/admin/categorias" />
 
-                {/* <SidebarItem icon={<Package />} label="Productos" collapsed={collapsed} /> */}
+                <SidebarItem icon={<QrCode />} label="Mi código QR" collapsed={collapsed} to="/admin/qr" />
 
             </nav>
 
