@@ -1,9 +1,24 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
 export default function Navbar() {
     const navigate = useNavigate()
     const [isMenuOpen, setIsMenuOpen] = useState(false)
+    const [displayName, setDisplayName] = useState("Admin")
+
+    useEffect(() => {
+        const storedUser = localStorage.getItem("authUser")
+        if (storedUser) {
+            try {
+                const parsed = JSON.parse(storedUser) as { name?: string }
+                if (parsed?.name) {
+                    setDisplayName(parsed.name)
+                }
+            } catch {
+                setDisplayName("Admin")
+            }
+        }
+    }, [])
 
     const handleLogout = () => {
         localStorage.removeItem("authToken")
@@ -26,7 +41,7 @@ export default function Navbar() {
                     aria-haspopup="menu"
                     aria-expanded={isMenuOpen ? "true" : "false"}
                 >
-                    <span>👤 Admin</span>
+                    <span>👤 {displayName}</span>
                     <span className="text-xs">▾</span>
                 </button>
 

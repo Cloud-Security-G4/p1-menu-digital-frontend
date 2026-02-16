@@ -48,6 +48,7 @@ const loadDishes = () => {
     return []
 }
 
+// Categories admin
 export default function AdminCategoryPage() {
     const [categories, setCategories] = useState<CategoryMock[]>([])
     const [dishes, setDishes] = useState<DishMock[]>([])
