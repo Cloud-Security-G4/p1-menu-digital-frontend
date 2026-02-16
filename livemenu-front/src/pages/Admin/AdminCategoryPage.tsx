@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { useLocation } from "react-router-dom"
 import {
     DndContext,
     PointerSensor,
@@ -15,7 +16,6 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import AdminLayout from "../../components/layout/AdminLayout"
-import type { DishMock } from "../../mocks/dishMock"
 import { createCategory, deleteCategory, getCategories, reorderCategories, updateCategory, type Category } from "../../services/categoryService"
 
 type CategoryForm = {
@@ -34,23 +34,9 @@ const normalizeCategories = (items: Category[]) =>
         active: typeof item.active === "boolean" ? item.active : true,
     }))
 
-const loadDishes = () => {
-    const stored = localStorage.getItem("dishes")
-    if (stored) {
-        try {
-            const parsed = JSON.parse(stored) as DishMock[]
-            return Array.isArray(parsed) ? parsed : []
-        } catch {
-            return []
-        }
-    }
-    return []
-}
-
 // Categories admin
 export default function AdminCategoryPage() {
     const [categories, setCategories] = useState<Category[]>([])
-    const [dishes, setDishes] = useState<DishMock[]>([])
     const [isFormOpen, setIsFormOpen] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
     const [form, setForm] = useState<CategoryForm>({
@@ -65,6 +51,7 @@ export default function AdminCategoryPage() {
     const [isReordering, setIsReordering] = useState(false)
     const [pendingDelete, setPendingDelete] = useState<Category | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
+    const location = useLocation()
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -90,8 +77,15 @@ export default function AdminCategoryPage() {
             }
         }
         loadData()
-        setDishes(loadDishes())
     }, [])
+
+    useEffect(() => {
+        const resetSignal = (location.state as { resetCategoriesView?: number } | null)?.resetCategoriesView
+        if (!resetSignal) return
+        setIsFormOpen(false)
+        setEditingId(null)
+        resetForm()
+    }, [location.state])
 
     const orderedCategories = useMemo(() => {
         return [...categories].sort((a, b) => a.position - b.position)
@@ -203,12 +197,6 @@ export default function AdminCategoryPage() {
 
     const handleDelete = async () => {
         if (!pendingDelete) return
-        const hasDishes = dishes.some((dish) => dish.categoryId === pendingDelete.id && !dish.isDeleted)
-        if (hasDishes) {
-            setError("No se puede eliminar: hay platos asociados.")
-            setPendingDelete(null)
-            return
-        }
         try {
             setIsDeleting(true)
             await deleteCategory(pendingDelete.id)
