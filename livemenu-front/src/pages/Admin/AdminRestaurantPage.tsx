@@ -29,7 +29,7 @@ const formatHours = (hours: Restaurant["hours"]) => {
 
 // Restaurants admin
 export default function AdminRestaurantPage() {
-    const [restaurants, setRestaurants] = useState<Restaurant[]>([])
+    const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
     const [error, setError] = useState("")
     const hasLoaded = useRef(false)
     const [pendingDelete, setPendingDelete] = useState<Restaurant | null>(null)
@@ -60,8 +60,14 @@ export default function AdminRestaurantPage() {
             try {
                 setIsLoading(true)
                 const data = await getRestaurants()
-                const items = Array.isArray(data) ? data : data?.data || []
-                setRestaurants(items)
+                const item = Array.isArray(data)
+                    ? data[0]
+                    : Array.isArray(data?.data)
+                        ? data.data[0]
+                        : data?.id
+                            ? data
+                            : null
+                setRestaurant(item || null)
             } catch (err) {
                 setError(err instanceof Error ? err.message : "Error cargando restaurantes.")
             } finally {
@@ -76,7 +82,7 @@ export default function AdminRestaurantPage() {
         setIsDeleting(true)
         try {
             await deleteRestaurant(pendingDelete.id)
-            setRestaurants((prev) => prev.filter((item) => item.id !== pendingDelete.id))
+            setRestaurant(null)
             setPendingDelete(null)
             setToast("Restaurante eliminado.")
         } catch (err) {
@@ -124,82 +130,73 @@ export default function AdminRestaurantPage() {
                     </div>
                 )}
 
-                {restaurants.length === 0 && !error ? (
+                {!restaurant && !error && !isLoading ? (
                     <div className="bg-white p-6 rounded-xl shadow text-gray-600">
-                        No hay restaurantes registrados.
+                        No hay restaurante registrado.
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {restaurants.map((restaurant) => (
-                            <div
-                                key={restaurant.id}
-                                className="bg-white p-6 rounded-xl shadow"
-                            >
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="flex items-start gap-4 min-w-0">
-                                        <div className="w-20 h-20 rounded bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                            {restaurant.logo ? (
-                                                <img
-                                                    src={restaurant.logo}
-                                                    alt="Logo del restaurante"
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            ) : (
-                                                <span className="text-gray-400 text-sm">
-                                                    Logo
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <h4 className="text-xl font-bold truncate">
-                                                {restaurant.name || "Nombre del restaurante"}
-                                            </h4>
-                                            <p className="text-gray-600 text-sm line-clamp-2">
-                                                {restaurant.description || "Descripción del restaurante."}
-                                            </p>
-                                        </div>
+                    restaurant && (
+                        <div className="bg-white p-6 rounded-xl shadow">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-start gap-4 min-w-0">
+                                    <div className="w-20 h-20 rounded bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                        {restaurant.logo ? (
+                                            <img
+                                                src={restaurant.logo}
+                                                alt="Logo del restaurante"
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <span className="text-gray-400 text-sm">
+                                                Logo
+                                            </span>
+                                        )}
                                     </div>
-
-                                    <div className="flex items-center gap-3 flex-shrink-0">
-                                        <Link
-                                            to={`/admin/restaurant/${restaurant.id}/editar`}
-                                            className="text-blue-600 hover:text-blue-700"
-                                            aria-label="Editar restaurante"
-                                        >
-                                            <Pencil size={18} />
-                                        </Link>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPendingDelete(restaurant)}
-                                            className="text-red-600 hover:text-red-700"
-                                            aria-label="Eliminar restaurante"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
+                                    <div className="min-w-0">
+                                        <h4 className="text-xl font-bold truncate">
+                                            {restaurant.name || "Nombre del restaurante"}
+                                        </h4>
+                                        <p className="text-gray-600 text-sm line-clamp-2">
+                                            {restaurant.description || "Descripción del restaurante."}
+                                        </p>
                                     </div>
                                 </div>
 
-                                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                                    <div>
-                                        <span className="font-medium">Horarios:</span>{" "}
-                                        {formatHours(restaurant.hours)}
-                                    </div>
-                                    <div>
-                                        <span className="font-medium">Teléfono:</span>{" "}
-                                        {restaurant.phone || "Sin definir"}
-                                    </div>
-                                    {/* <div>
-                                        <span className="font-medium">Email:</span>{" "}
-                                        {restaurant.email || "Sin definir"}
-                                    </div> */}
-                                    <div>
-                                        <span className="font-medium">Dirección:</span>{" "}
-                                        {restaurant.address || "Sin definir"}
-                                    </div>
+                                <div className="flex items-center gap-3 flex-shrink-0">
+                                    <Link
+                                        to={`/admin/restaurant/${restaurant.id}/editar`}
+                                        className="text-blue-600 hover:text-blue-700"
+                                        aria-label="Editar restaurante"
+                                    >
+                                        <Pencil size={18} />
+                                    </Link>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPendingDelete(restaurant)}
+                                        className="text-red-600 hover:text-red-700"
+                                        aria-label="Eliminar restaurante"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
                                 </div>
                             </div>
-                        ))}
-                    </div>
+
+                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <span className="font-medium">Horarios:</span>{" "}
+                                    {formatHours(restaurant.hours)}
+                                </div>
+                                <div>
+                                    <span className="font-medium">Teléfono:</span>{" "}
+                                    {restaurant.phone || "Sin definir"}
+                                </div>
+                                <div>
+                                    <span className="font-medium">Dirección:</span>{" "}
+                                    {restaurant.address || "Sin definir"}
+                                </div>
+                            </div>
+                        </div>
+                    )
                 )}
 
                 {pendingDelete && (

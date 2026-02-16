@@ -30,6 +30,7 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
     const [saved, setSaved] = useState(false)
     const [logoError, setLogoError] = useState("")
     const [error, setError] = useState("")
+    const [nameError, setNameError] = useState("")
     const days = [
         { key: "monday", label: "Lunes" },
         { key: "tuesday", label: "Martes" },
@@ -44,9 +45,15 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
         const loadData = async () => {
             try {
                 const data = await getRestaurants()
-                const items = Array.isArray(data) ? data : data?.data || []
+                const items = Array.isArray(data)
+                    ? data
+                    : Array.isArray(data?.data)
+                        ? data.data
+                        : data?.id
+                            ? [data]
+                            : []
                 if (!isCreateMode) {
-                    const match = items.find((item: Restaurant) => item.id === (id || "default"))
+                    const match = items.find((item: Restaurant) => item.id === (id || "default")) || items[0]
                     if (match) {
                         setProfile({
                             ...emptyProfile,
@@ -129,6 +136,10 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
 
     const handleSave = async () => {
         setError("")
+        if (!profile.name.trim()) {
+            setNameError("El nombre es obligatorio.")
+            return
+        }
         try {
             const payload: RestaurantPayload = {
                 name: profile.name,
@@ -227,11 +238,19 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
                             <input
                                 type="text"
                                 value={profile.name}
-                                onChange={(e) => handleChange("name", e.target.value)}
+                                onChange={(e) => {
+                                    handleChange("name", e.target.value)
+                                    if (nameError) setNameError("")
+                                }}
                                 maxLength={100}
-                                className="w-full p-2 border rounded"
+                                className={`w-full p-2 border rounded ${nameError ? "border-red-500" : "border-gray-300"}`}
                                 placeholder="Nombre del restaurante"
                             />
+                            {nameError && (
+                                <p className="mt-1 text-xs text-red-600">
+                                    {nameError}
+                                </p>
+                            )}
                             <p className="mt-1 text-xs text-gray-500">
                                 {profile.name.length}/100
                             </p>
