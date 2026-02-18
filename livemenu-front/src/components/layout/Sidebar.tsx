@@ -38,9 +38,21 @@ export default function Sidebar() {
 
                 <SidebarItem icon={<Store />} label="Mi restaurante" collapsed={collapsed} to="/admin/restaurant" />
 
-                <SidebarItem icon={<Soup />} label="Platos" collapsed={collapsed} to="/admin/platos" />
+                <SidebarItem
+                    icon={<Soup />}
+                    label="Platos"
+                    collapsed={collapsed}
+                    to="/admin/platos"
+                    state={{ resetPlatesView: Date.now() }}
+                />
 
-                <SidebarItem icon={<List />} label="Categorías" collapsed={collapsed} to="/admin/categorias" />
+                <SidebarItem
+                    icon={<List />}
+                    label="Categorías"
+                    collapsed={collapsed}
+                    to="/admin/categorias"
+                    state={{ resetCategoriesView: Date.now() }}
+                />
 
                 <SidebarItem icon={<QrCode />} label="Mi código QR" collapsed={collapsed} to="/admin/qr" />
 
@@ -50,7 +62,7 @@ export default function Sidebar() {
     )
 }
 
-function SidebarItem({ icon, label, collapsed, to }: any) {
+function SidebarItem({ icon, label, collapsed, to, state }: any) {
     const content = (
         <>
             {icon}
@@ -63,7 +75,7 @@ function SidebarItem({ icon, label, collapsed, to }: any) {
 
     if (to) {
         return (
-            <Link to={to} className={className}>
+            <Link to={to} state={state} className={className}>
                 {content}
             </Link>
         )
