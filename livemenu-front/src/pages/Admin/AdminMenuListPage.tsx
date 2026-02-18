@@ -1,76 +1,131 @@
 import { useEffect, useMemo, useState } from "react"
+import { useLocation } from "react-router-dom"
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import AdminLayout from "../../components/layout/AdminLayout"
-import { dishMock, type DishMock } from "../../mocks/dishMock"
+import { getCategories } from "../../services/categoryService"
+import { createDish, deleteDish, getDish, getDishes, reorderDishes, updateDish, updateDishAvailability, type Dish, type DishPayload } from "../../services/dishService"
 
 // Dishes admin: list, filters, and CRUD UI
 export default function AdminMenuListPage() {
-  const categories = [
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([
     { id: "all", name: "Todas" },
-    { id: "cat-01", name: "Clásicos" },
-    { id: "cat-02", name: "Marinos" },
-    { id: "cat-03", name: "Bebidas" },
-  ]
+  ])
 
-  const [dishes, setDishes] = useState<DishMock[]>([])
+  const [dishes, setDishes] = useState<Dish[]>([])
   const [query, setQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [availabilityFilter, setAvailabilityFilter] = useState("all")
-  const [showDeleted, setShowDeleted] = useState(false)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<DishMock>({
+  const [form, setForm] = useState({
     id: "",
     name: "",
     description: "",
-    price: 0,
-    categoryId: "cat-01",
+    price: "",
+    offerPrice: "",
+    categoryId: "",
     available: true,
+    featured: false,
     imageUrl: "",
+    tagsText: "",
+    position: 1,
   })
   const [imageError, setImageError] = useState("")
-
-  const normalizeDishes = (items: DishMock[]) =>
-    items.map((item) => ({
-      id: String(item.id || `d-${Date.now()}`),
-      name: typeof item.name === "string" ? item.name : "",
-      description: typeof item.description === "string" ? item.description : "",
-      price: Number.isFinite(Number(item.price)) ? Number(item.price) : 0,
-      categoryId: typeof item.categoryId === "string" ? item.categoryId : "cat-01",
-      available: typeof item.available === "boolean" ? item.available : true,
-      imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : "",
-      isDeleted: Boolean(item.isDeleted),
-    }))
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isReordering, setIsReordering] = useState(false)
+  const [error, setError] = useState("")
+  const [isFetchingDish, setIsFetchingDish] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<Dish | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [toast, setToast] = useState("")
+  const location = useLocation()
 
   useEffect(() => {
-    const stored = localStorage.getItem("dishes")
-    console.log("[Platos] localStorage dishes:", stored)
-    if (stored) {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(""), 3000)
+    return () => window.clearTimeout(timer)
+  }, [toast])
+
+  useEffect(() => {
+    const resetSignal = (location.state as { resetPlatesView?: number } | null)?.resetPlatesView
+    if (!resetSignal) return
+    setIsFormOpen(false)
+    setEditingId(null)
+    resetForm()
+  }, [location.state])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  )
+
+  const normalizeDish = (item: Dish) => ({
+    ...item,
+    price: Number(item.price) || 0,
+    offer_price: item.offer_price != null ? Number(item.offer_price) : null,
+    image_url: item.image_url ?? null,
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    position: Number(item.position) || 1,
+  })
+
+  const loadData = async () => {
       try {
-        const parsed = JSON.parse(stored) as DishMock[]
-        const hasItems = Array.isArray(parsed) && parsed.length > 0
-        const normalized = hasItems ? normalizeDishes(parsed) : normalizeDishes(dishMock)
-        console.log("[Platos] parsed dishes:", parsed)
-        console.log("[Platos] normalized dishes:", normalized)
-        setDishes(normalized)
-        return
-      } catch {
-        console.log("[Platos] parse error, fallback to mock")
-        setDishes(normalizeDishes(dishMock))
-        return
+        setIsLoading(true)
+        const [dishData, categoryData] = await Promise.all([
+          getDishes(),
+          getCategories(),
+        ])
+        const items = Array.isArray(dishData)
+          ? dishData
+          : Array.isArray(dishData?.data)
+            ? dishData.data
+            : dishData?.id
+              ? [dishData]
+              : []
+        const mapped = items.map((item: Dish) => ({
+          ...normalizeDish(item),
+        }))
+        setDishes(mapped)
+        const cats = Array.isArray(categoryData)
+          ? categoryData
+          : Array.isArray(categoryData?.data)
+            ? categoryData.data
+            : categoryData?.id
+              ? [categoryData]
+              : []
+        setCategories([{ id: "all", name: "Todas" }, ...cats.map((c: any) => ({ id: c.id, name: c.name }))])
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error cargando platos.")
+      } finally {
+        setIsLoading(false)
       }
     }
-    console.log("[Platos] no localStorage, using mock:", dishMock)
-    setDishes(normalizeDishes(dishMock))
-  }, [])
 
   useEffect(() => {
-    localStorage.setItem("dishes", JSON.stringify(dishes))
+    loadData()
+  }, [])
+
+  const orderedDishes = useMemo(() => {
+    return [...dishes].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
   }, [dishes])
 
   const filteredDishes = useMemo(() => {
-    const result = dishes.filter((dish) => {
-      if (!showDeleted && dish.isDeleted) return false
-      if (categoryFilter !== "all" && dish.categoryId !== categoryFilter) return false
+    const result = orderedDishes.filter((dish) => {
+      if (categoryFilter !== "all" && dish.category_id !== categoryFilter) return false
       if (availabilityFilter !== "all") {
         const target = availabilityFilter === "available"
         if (dish.available !== target) return false
@@ -85,19 +140,23 @@ export default function AdminMenuListPage() {
       }
       return true
     })
-    console.log("[Platos] filtered dishes:", result.length, result)
     return result
-  }, [dishes, query, categoryFilter, availabilityFilter, showDeleted])
+  }, [orderedDishes, query, categoryFilter, availabilityFilter])
 
   const resetForm = () => {
+    const defaultCategory = categories.find((cat) => cat.id !== "all")?.id || ""
     setForm({
       id: "",
       name: "",
       description: "",
-      price: 0,
-      categoryId: "cat-01",
+      price: "",
+      offerPrice: "",
+      categoryId: defaultCategory,
       available: true,
+      featured: false,
       imageUrl: "",
+      tagsText: "",
+      position: 1,
     })
     setEditingId(null)
     setImageError("")
@@ -108,10 +167,31 @@ export default function AdminMenuListPage() {
     setIsFormOpen(true)
   }
 
-  const openEdit = (dish: DishMock) => {
-    setForm({ ...dish })
+  const openEdit = async (dish: Dish) => {
     setEditingId(dish.id)
     setIsFormOpen(true)
+    setIsFetchingDish(true)
+    try {
+      const data = await getDish(dish.id)
+      const normalized = normalizeDish(data?.id ? data : dish)
+      setForm({
+        id: normalized.id,
+        name: normalized.name,
+        description: normalized.description,
+        price: String(normalized.price ?? ""),
+        offerPrice: normalized.offer_price != null ? String(normalized.offer_price) : "",
+        categoryId: normalized.category_id,
+        available: normalized.available,
+        featured: normalized.featured,
+        imageUrl: normalized.image_url ?? "",
+        tagsText: (normalized.tags || []).join(", "),
+        position: normalized.position ?? 1,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error cargando plato.")
+    } finally {
+      setIsFetchingDish(false)
+    }
   }
 
   const handleImageFile = (file: File | null) => {
@@ -137,56 +217,125 @@ export default function AdminMenuListPage() {
     reader.readAsDataURL(file)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim()) return
     if (!form.description.trim()) return
-    const payload = {
-      ...form,
-      id: editingId || `d-${Date.now()}`,
-      isDeleted: false,
+    const tags = form.tagsText
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+    const payload: DishPayload = {
+      name: form.name.trim(),
+      description: form.description.trim(),
+      price: Number(form.price) || 0,
+      offer_price: form.offerPrice ? Number(form.offerPrice) : null,
+      image_url: form.imageUrl || null,
+      available: form.available,
+      featured: form.featured,
+      tags,
+      position: Number(form.position) || 1,
+      category_id: form.categoryId,
     }
-    const updated = editingId
-      ? dishes.map((dish) => (dish.id === editingId ? payload : dish))
-      : [...dishes, payload]
-    setDishes(updated)
-    setIsFormOpen(false)
-    resetForm()
+    try {
+      setIsSaving(true)
+      if (editingId) {
+        await updateDish(editingId, payload)
+      } else {
+        await createDish(payload)
+      }
+      await loadData()
+      setIsFormOpen(false)
+      resetForm()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error guardando plato.")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const handleDelete = (dishId: string) => {
-    setDishes((prev) =>
-      prev.map((dish) =>
-        dish.id === dishId ? { ...dish, isDeleted: true } : dish
-      )
-    )
+  const handleDelete = async () => {
+    if (!pendingDelete) return
+    try {
+      setIsDeleting(true)
+      await deleteDish(pendingDelete.id)
+      await loadData()
+      setPendingDelete(null)
+      setToast("Eliminado correctamente.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error eliminando plato.")
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
-  const handleRestore = (dishId: string) => {
-    setDishes((prev) =>
-      prev.map((dish) =>
-        dish.id === dishId ? { ...dish, isDeleted: false } : dish
+  const handleAvailability = async (dish: Dish) => {
+    const payload: DishPayload = {
+      name: dish.name,
+      description: dish.description,
+      price: Number(dish.price) || 0,
+      offer_price: dish.offer_price ?? null,
+      image_url: dish.image_url ?? null,
+      available: !dish.available,
+      featured: dish.featured,
+      tags: Array.isArray(dish.tags) ? dish.tags : [],
+      position: Number(dish.position) || 1,
+      category_id: dish.category_id,
+    }
+    try {
+      await updateDishAvailability(dish.id, payload)
+      setDishes((prev) =>
+        prev.map((item) =>
+          item.id === dish.id ? { ...item, available: payload.available } : item
+        )
       )
-    )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error actualizando disponibilidad.")
+    }
   }
 
-  const handleAvailability = (dishId: string) => {
-    setDishes((prev) =>
-      prev.map((dish) =>
-        dish.id === dishId ? { ...dish, available: !dish.available } : dish
-      )
-    )
-  }
-
-  const handleMoveCategory = (dishId: string, categoryId: string) => {
-    setDishes((prev) =>
-      prev.map((dish) =>
-        dish.id === dishId ? { ...dish, categoryId } : dish
-      )
-    )
-  }
+  // const handleMoveCategory = (dishId: string, categoryId: string) => {
+  //   setDishes((prev) =>
+  //     prev.map((dish) =>
+  //       dish.id === dishId ? { ...dish, category_id: categoryId } : dish
+  //     )
+  //   )
+  // }
 
   const categoryLabel = (categoryId: string) =>
     categories.find((cat) => cat.id === categoryId)?.name || "Sin categoría"
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const activeId = String(active.id)
+    const overId = String(over.id)
+    const current = [...filteredDishes]
+    const oldIndex = current.findIndex((item) => item.id === activeId)
+    const newIndex = current.findIndex((item) => item.id === overId)
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const reordered = arrayMove(current, oldIndex, newIndex).map((item, index) => ({
+      ...item,
+      position: index + 1,
+    }))
+
+    setDishes((prev) =>
+      prev.map((dish) => {
+        const match = reordered.find((item) => item.id === dish.id)
+        return match ? { ...dish, position: match.position } : dish
+      })
+    )
+
+    try {
+      setIsReordering(true)
+      await reorderDishes(reordered.map((item) => ({ id: item.id, position: item.position })))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error actualizando el orden.")
+    } finally {
+      setIsReordering(false)
+    }
+  }
 
   return (
     <AdminLayout>
@@ -203,6 +352,35 @@ export default function AdminMenuListPage() {
             Crear Plato
           </button>
         </div>
+
+        {error && (
+          <div className="mb-4 bg-red-50 text-red-700 px-4 py-2 rounded">
+            {error}
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="mb-4">
+            <div className="text-sm text-gray-600 mb-2">
+              Estamos cargando los platos...
+            </div>
+            <div className="h-1 w-full bg-blue-100 rounded overflow-hidden">
+              <div className="h-full w-1/2 bg-blue-600 animate-pulse" />
+            </div>
+          </div>
+        )}
+
+        {toast && (
+          <div className="mb-4 bg-green-50 text-green-700 px-4 py-2 rounded">
+            {toast}
+          </div>
+        )}
+
+        {isReordering && (
+          <div className="mb-4 text-sm text-gray-600">
+            Reordenando platos...
+          </div>
+        )}
 
         {/* FILTERS */}
         <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -242,14 +420,14 @@ export default function AdminMenuListPage() {
               <option value="unavailable">No disponibles</option>
             </select>
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          {/* <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={showDeleted}
               onChange={(e) => setShowDeleted(e.target.checked)}
             />
             Mostrar eliminados
-          </label>
+          </label> */}
         </div>
 
         {/* FORM */}
@@ -258,6 +436,11 @@ export default function AdminMenuListPage() {
             <h2 className="text-lg font-semibold mb-4">
               {editingId ? "Editar plato" : "Nuevo plato"}
             </h2>
+            {isFetchingDish && (
+              <div className="mb-4 text-sm text-gray-600">
+                Cargando información del plato...
+              </div>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="space-y-4">
                 <div>
@@ -282,11 +465,28 @@ export default function AdminMenuListPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">Precio</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="0.1"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="\\d*"
                     value={form.price}
-                    onChange={(e) => setForm((prev) => ({ ...prev, price: Number(e.target.value) }))}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, "")
+                      setForm((prev) => ({ ...prev, price: value }))
+                    }}
+                    className="w-full p-2 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Precio oferta</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="\\d*"
+                    value={form.offerPrice}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, "")
+                      setForm((prev) => ({ ...prev, offerPrice: value }))
+                    }}
                     className="w-full p-2 border rounded"
                   />
                 </div>
@@ -312,6 +512,24 @@ export default function AdminMenuListPage() {
                   />
                   Disponible
                 </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.featured}
+                    onChange={(e) => setForm((prev) => ({ ...prev, featured: e.target.checked }))}
+                  />
+                  Destacado
+                </label>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Posición</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.position}
+                    onChange={(e) => setForm((prev) => ({ ...prev, position: Number(e.target.value) }))}
+                    className="w-full p-2 border rounded"
+                  />
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -337,6 +555,16 @@ export default function AdminMenuListPage() {
                     <p className="mt-1 text-sm text-red-600">{imageError}</p>
                   )}
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Tags (separados por coma)</label>
+                  <input
+                    type="text"
+                    value={form.tagsText}
+                    onChange={(e) => setForm((prev) => ({ ...prev, tagsText: e.target.value }))}
+                    className="w-full p-2 border rounded"
+                    placeholder="carne, popular, sin gluten"
+                  />
+                </div>
 
                 <div className="bg-gray-50 p-4 rounded">
                   <p className="text-sm font-medium mb-2">Vista previa</p>
@@ -360,9 +588,10 @@ export default function AdminMenuListPage() {
             <div className="mt-4 flex flex-col sm:flex-row gap-2">
               <button
                 onClick={handleSave}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-60"
+                disabled={isSaving}
               >
-                Guardar
+                {isSaving ? "Guardando..." : "Guardar"}
               </button>
               <button
                 onClick={() => {
@@ -378,91 +607,175 @@ export default function AdminMenuListPage() {
         )}
 
         {/* CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredDishes.map((dish) => (
-            <div key={dish.id} className="bg-white p-5 rounded-xl shadow">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-16 h-16 rounded bg-gray-100 overflow-hidden flex items-center justify-center">
-                    {dish.imageUrl ? (
-                      <img src={dish.imageUrl} alt={dish.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-xs text-gray-400">Foto</span>
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">{dish.name}</h3>
-                    <p className="text-sm text-gray-600 line-clamp-2">{dish.description}</p>
-                    <p className="text-xs text-gray-500 mt-1">{categoryLabel(dish.categoryId)}</p>
-                  </div>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded ${dish.available ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-700"}`}>
-                  {dish.available ? "Activo" : "Inactivo"}
-                </span>
-              </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={filteredDishes.map((dish) => dish.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredDishes.map((dish) => (
+                <SortableDishCard
+                  key={dish.id}
+                  dish={dish}
+                  categoryLabel={categoryLabel}
+                  onEdit={() => openEdit(dish)}
+                  onDelete={() => setPendingDelete(dish)}
+                  onToggleAvailability={() => handleAvailability(dish)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
 
-              <div className="mt-4 flex items-center justify-between text-sm">
-                <span className="font-semibold">Precio: ${dish.price.toFixed(2)}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Disponibilidad</span>
-                  <button
-                    type="button"
-                    onClick={() => handleAvailability(dish.id)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${dish.available ? "bg-blue-600" : "bg-gray-300"}`}
-                    role="switch"
-                    aria-checked={dish.available}
-                    aria-label="Cambiar disponibilidad"
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${dish.available ? "translate-x-6" : "translate-x-1"}`}
-                    />
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-3">
-                <label className="text-xs text-gray-500">Mover a categoría</label>
-                <select
-                  value={dish.categoryId}
-                  onChange={(e) => handleMoveCategory(dish.id, e.target.value)}
-                  className="mt-1 w-full p-2 border rounded text-sm"
-                >
-                  {categories.filter((cat) => cat.id !== "all").map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="mt-4 flex gap-3 text-sm">
+        {pendingDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+              <h3 className="text-lg font-semibold mb-2">
+                ¿Eliminar plato?
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Esta acción no se puede deshacer. Se eliminará
+                <span className="font-medium"> {pendingDelete.name}</span>.
+              </p>
+              <div className="flex gap-2 justify-end">
                 <button
-                  onClick={() => openEdit(dish)}
-                  className="text-blue-600 hover:underline"
+                  type="button"
+                  onClick={() => setPendingDelete(null)}
+                  className="px-4 py-2 rounded border"
+                  disabled={isDeleting}
                 >
-                  Editar
+                  Cancelar
                 </button>
-                {dish.isDeleted ? (
-                  <button
-                    onClick={() => handleRestore(dish.id)}
-                    className="text-green-600 hover:underline"
-                  >
-                    Restaurar
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleDelete(dish.id)}
-                    className="text-red-600 hover:underline"
-                  >
-                    Eliminar
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? "Eliminando..." : "Eliminar"}
+                </button>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
       </div>
     </AdminLayout>
+  )
+}
+
+function SortableDishCard({
+  dish,
+  categoryLabel,
+  onEdit,
+  onDelete,
+  onToggleAvailability,
+}: {
+  dish: Dish
+  categoryLabel: (categoryId: string) => string
+  onEdit: () => void
+  onDelete: () => void
+  onToggleAvailability: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: dish.id,
+  })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="bg-white p-5 rounded-xl shadow cursor-grab active:cursor-grabbing"
+      {...attributes}
+      {...listeners}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="w-16 h-16 rounded bg-gray-100 overflow-hidden flex items-center justify-center">
+            {dish.image_url ? (
+              <img src={dish.image_url} alt={dish.name} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-xs text-gray-400">Foto</span>
+            )}
+          </div>
+          <div>
+            <h3 className="font-semibold">{dish.name}</h3>
+            <p className="text-sm text-gray-600 line-clamp-2">{dish.description}</p>
+            <p className="text-xs text-gray-500 mt-1">{categoryLabel(dish.category_id)}</p>
+            {dish.tags?.length ? (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {dish.tags.slice(0, 4).map((tag, index) => (
+                  <span
+                    key={`${dish.id}-tag-${index}`}
+                    className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <span className={`text-xs px-2 py-1 rounded ${dish.available ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-700"}`}>
+          {dish.available ? "Activo" : "Inactivo"}
+        </span>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between text-sm">
+        <span className="font-semibold">Precio: ${dish.price.toFixed(2)}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Disponibilidad</span>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleAvailability()
+            }}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${dish.available ? "bg-blue-600" : "bg-gray-300"}`}
+            role="switch"
+            aria-checked={dish.available}
+            aria-label="Cambiar disponibilidad"
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${dish.available ? "translate-x-6" : "translate-x-1"}`}
+            />
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 text-sm text-gray-600">
+        <span className="text-xs text-gray-500">Categoría:</span>{" "}
+        {categoryLabel(dish.category_id)}
+      </div>
+
+      <div className="mt-4 flex gap-3 text-sm">
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            onEdit()
+          }}
+          className="text-blue-600 hover:underline"
+        >
+          Editar
+        </button>
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete()
+          }}
+          className="text-red-600 hover:underline"
+        >
+          Eliminar
+        </button>
+      </div>
+    </div>
   )
 }
