@@ -6,9 +6,9 @@ import { getDishes } from "../../services/dishService"
 
 // Admin landing
 export default function AdminDashboardPage() {
-    const [restaurantsCount, setRestaurantsCount] = useState(0)
-    const [categoriesCount, setCategoriesCount] = useState(0)
-    const [availableDishesCount, setAvailableDishesCount] = useState(0)
+    const [restaurantsCount, setRestaurantsCount] = useState<number | null>(null)
+    const [categoriesCount, setCategoriesCount] = useState<number | null>(null)
+    const [availableDishesCount, setAvailableDishesCount] = useState<number | null>(null)
 
     useEffect(() => {
         const loadRestaurants = async () => {
@@ -75,19 +75,33 @@ export default function AdminDashboardPage() {
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
-                <Card title="Mis Restaurantes" value={restaurantsCount} />
-                <Card title="Paltos disponibles" value={availableDishesCount} />
-                <Card title="Categorías" value={categoriesCount} />
+                {/* <Card title="Mis Restaurantes" value={restaurantsCount} isLoading={restaurantsCount === null} /> */}
+                <Card title="Paltos disponibles" value={availableDishesCount} isLoading={availableDishesCount === null} />
+                <Card title="Categorías" value={categoriesCount} isLoading={categoriesCount === null} />
             </div>
         </AdminLayout>
     )
 }
 
-function Card({ title, value }: any) {
+function Card({
+    title,
+    value,
+    isLoading
+}: {
+    title: string
+    value: number | null
+    isLoading: boolean
+}) {
     return (
         <div className="bg-white p-4 sm:p-6 rounded-xl shadow">
             <p className="text-gray-500 text-sm sm:text-base">{title}</p>
-            <h3 className="text-2xl sm:text-3xl font-bold">{value}</h3>
+            {isLoading ? (
+                <div className="mt-2 flex items-center">
+                    <span className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-blue-600" />
+                </div>
+            ) : (
+                <h3 className="text-2xl sm:text-3xl font-bold">{value}</h3>
+            )}
         </div>
     )
 }

@@ -31,6 +31,7 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
     const [logoError, setLogoError] = useState("")
     const [error, setError] = useState("")
     const [nameError, setNameError] = useState("")
+    const isFormValid = Boolean(profile.name.trim())
     const days = [
         { key: "monday", label: "Lunes" },
         { key: "tuesday", label: "Martes" },
@@ -183,12 +184,19 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
                         <button
                             type="button"
                             onClick={handleSave}
-                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-60"
+                            disabled={!isFormValid}
                         >
                             {isCreateMode ? "Crear restaurante" : "Guardar cambios"}
                         </button>
                     </div>
                 </div>
+
+                {!isFormValid && (
+                    <p className="text-sm text-red-600">
+                        Completa los campos obligatorios marcados con *.
+                    </p>
+                )}
 
                 {error && (
                     <div className="bg-red-50 text-red-700 px-4 py-2 rounded">
@@ -233,7 +241,7 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
 
                         <div>
                             <label className="block text-sm font-medium mb-1">
-                                Nombre
+                                Nombre <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="text"
@@ -245,6 +253,8 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
                                 maxLength={100}
                                 className={`w-full p-2 border rounded ${nameError ? "border-red-500" : "border-gray-300"}`}
                                 placeholder="Nombre del restaurante"
+                                required
+                                aria-required="true"
                             />
                             {nameError && (
                                 <p className="mt-1 text-xs text-red-600">

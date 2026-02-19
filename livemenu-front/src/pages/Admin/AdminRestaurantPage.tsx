@@ -97,14 +97,14 @@ export default function AdminRestaurantPage() {
             <div className="flex flex-col gap-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-xl sm:text-2xl font-bold">
-                        Mis restaurantes
+                        Mi restaurante
                     </h2>
-                    <Link
+                    {/* <Link
                         to="/admin/restaurant/nuevo"
                         className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto text-center"
                     >
                         Agregar restaurante
-                    </Link>
+                    </Link> */}
                 </div>
 
                 {error && (
@@ -125,7 +125,7 @@ export default function AdminRestaurantPage() {
                             Estamos cargando tus restaurantes...
                         </div>
                         <div className="h-1 w-full bg-blue-100 rounded overflow-hidden">
-                            <div className="h-full w-1/2 bg-blue-600 animate-pulse" />
+                            <div className="h-full w-full bg-blue-600 animate-pulse" />
                         </div>
                     </div>
                 )}
@@ -193,6 +193,10 @@ export default function AdminRestaurantPage() {
                                 <div>
                                     <span className="font-medium">Dirección:</span>{" "}
                                     {restaurant.address || "Sin definir"}
+                                </div>
+                                <div>
+                                    <span className="font-medium">URL pública:</span>{" "}
+                                    {restaurant.slug || "Sin definir"}
                                 </div>
                             </div>
                         </div>

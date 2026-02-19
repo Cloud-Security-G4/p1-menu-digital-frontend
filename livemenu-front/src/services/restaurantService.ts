@@ -12,6 +12,7 @@ export type RestaurantPayload = {
 export type Restaurant = RestaurantPayload & {
     id: string
     email?: string
+    slug?: string
 }
 
 export async function getRestaurants() {
