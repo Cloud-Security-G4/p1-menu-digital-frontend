@@ -81,12 +81,34 @@ export default function LoginPage() {
         setLoading(true)
         setEmailError("")
         setPasswordError("")
+        setAuthError("")
 
         try {
             const data = await register(fullName.trim(), trimmedEmail, password)
             handleAuthSuccess(data)
         } catch (error) {
-            console.error(error)
+            if (error instanceof Error) {
+                try {
+                    const parsed = JSON.parse(error.message) as {
+                        message?: string
+                        errors?: { email?: string[] }
+                    }
+
+                    if (parsed?.errors?.email?.length) {
+                        setEmailError("El correo ya está registrado.")
+                        return
+                    }
+
+                    if (parsed?.message) {
+                        setAuthError(parsed.message)
+                        return
+                    }
+                } catch {
+                    setAuthError(error.message || "No se pudo crear la cuenta.")
+                    return
+                }
+            }
+            setAuthError("No se pudo crear la cuenta.")
         } finally {
             setLoading(false)
         }
@@ -138,9 +160,24 @@ export default function LoginPage() {
                         className={`w-full mb-1 p-2 border rounded ${emailError ? "border-red-500" : "border-gray-300"}`}
                         value={email}
                         onChange={(e) => {
-                            setEmail(e.target.value)
-                            if (emailError) setEmailError("")
+                            const nextEmail = e.target.value
+                            setEmail(nextEmail)
+                            if (emailError) {
+                                const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail.trim())
+                                if (isValidEmail || !nextEmail.trim()) {
+                                    setEmailError("")
+                                }
+                            }
                             if (authError) setAuthError("")
+                        }}
+                        onBlur={(e) => {
+                            const trimmedEmail = e.target.value.trim()
+                            if (trimmedEmail) {
+                                const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
+                                if (!isValidEmail) {
+                                    setEmailError("Ingresa un correo válido.")
+                                }
+                            }
                         }}
                         aria-invalid={emailError ? "true" : "false"}
                     />
@@ -180,7 +217,7 @@ export default function LoginPage() {
                             {passwordError}
                         </p>
                     )}
-                    {authError && !isRegister && (
+                    {authError && (
                         <p className="mb-3 text-sm text-red-600">
                             {authError}
                         </p>

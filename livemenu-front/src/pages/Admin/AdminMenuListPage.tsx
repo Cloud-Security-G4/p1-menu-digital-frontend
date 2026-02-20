@@ -52,6 +52,7 @@ export default function AdminMenuListPage() {
   const [isFetchingDish, setIsFetchingDish] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<Dish | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [movingDishId, setMovingDishId] = useState<string | null>(null)
   const [toast, setToast] = useState("")
   const location = useLocation()
 
@@ -122,6 +123,13 @@ export default function AdminMenuListPage() {
   const orderedDishes = useMemo(() => {
     return [...dishes].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
   }, [dishes])
+
+  const isFormValid = Boolean(
+    form.name.trim() &&
+    form.description.trim() &&
+    form.price.trim() &&
+    form.categoryId
+  )
 
   const filteredDishes = useMemo(() => {
     const result = orderedDishes.filter((dish) => {
@@ -293,13 +301,35 @@ export default function AdminMenuListPage() {
     }
   }
 
-  // const handleMoveCategory = (dishId: string, categoryId: string) => {
-  //   setDishes((prev) =>
-  //     prev.map((dish) =>
-  //       dish.id === dishId ? { ...dish, category_id: categoryId } : dish
-  //     )
-  //   )
-  // }
+  const handleMoveCategory = async (dish: Dish, categoryId: string) => {
+    if (dish.category_id === categoryId) return
+    const payload: DishPayload = {
+      name: dish.name,
+      description: dish.description,
+      price: Number(dish.price) || 0,
+      offer_price: dish.offer_price ?? null,
+      image_url: dish.image_url ?? null,
+      available: dish.available,
+      featured: dish.featured,
+      tags: Array.isArray(dish.tags) ? dish.tags : [],
+      position: Number(dish.position) || 1,
+      category_id: categoryId,
+    }
+    try {
+      setMovingDishId(dish.id)
+      await updateDish(dish.id, payload)
+      setDishes((prev) =>
+        prev.map((item) =>
+          item.id === dish.id ? { ...item, category_id: categoryId } : item
+        )
+      )
+      setToast("Plato actualizado.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error actualizando categoría.")
+    } finally {
+      setMovingDishId(null)
+    }
+  }
 
   const categoryLabel = (categoryId: string) =>
     categories.find((cat) => cat.id === categoryId)?.name || "Sin categoría"
@@ -365,7 +395,7 @@ export default function AdminMenuListPage() {
               Estamos cargando los platos...
             </div>
             <div className="h-1 w-full bg-blue-100 rounded overflow-hidden">
-              <div className="h-full w-1/2 bg-blue-600 animate-pulse" />
+              <div className="h-full w-full bg-blue-600 animate-pulse" />
             </div>
           </div>
         )}
@@ -444,26 +474,40 @@ export default function AdminMenuListPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Nombre</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Nombre <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={form.name}
                     onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                     className="w-full p-2 border rounded"
                     maxLength={100}
+                    required
+                    aria-required="true"
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                                {form.name.length}/100
+                            </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Descripción</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Descripción <span className="text-red-500">*</span>
+                  </label>
                   <textarea
                     value={form.description}
                     onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
                     className="w-full p-2 border rounded min-h-[100px]"
-                    maxLength={500}
+                    maxLength={300}
+                    required
+                    aria-required="true"
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                                {form.description.length}/300
+                            </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Precio</label>
+                  <label className="block text-sm font-medium mb-1">Precio <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -474,6 +518,8 @@ export default function AdminMenuListPage() {
                       setForm((prev) => ({ ...prev, price: value }))
                     }}
                     className="w-full p-2 border rounded"
+                    required
+                    aria-required="true"
                   />
                 </div>
                 <div>
@@ -491,11 +537,15 @@ export default function AdminMenuListPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Categoría</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Categoría <span className="text-red-500">*</span>
+                  </label>
                   <select
                     value={form.categoryId}
                     onChange={(e) => setForm((prev) => ({ ...prev, categoryId: e.target.value }))}
                     className="w-full p-2 border rounded"
+                    required
+                    aria-required="true"
                   >
                     {categories.filter((cat) => cat.id !== "all").map((cat) => (
                       <option key={cat.id} value={cat.id}>
@@ -585,11 +635,16 @@ export default function AdminMenuListPage() {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-col sm:flex-row gap-2">
+            {!isFormValid && (
+              <p className="mt-4 text-sm text-red-600">
+                Completa los campos obligatorios marcados con *.
+              </p>
+            )}
+            <div className="mt-2 flex flex-col sm:flex-row gap-2">
               <button
                 onClick={handleSave}
                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-60"
-                disabled={isSaving}
+                disabled={isSaving || !isFormValid}
               >
                 {isSaving ? "Guardando..." : "Guardar"}
               </button>
@@ -622,9 +677,12 @@ export default function AdminMenuListPage() {
                   key={dish.id}
                   dish={dish}
                   categoryLabel={categoryLabel}
+                  categories={categories.filter((cat) => cat.id !== "all")}
+                  isMoving={movingDishId === dish.id}
                   onEdit={() => openEdit(dish)}
                   onDelete={() => setPendingDelete(dish)}
                   onToggleAvailability={() => handleAvailability(dish)}
+                  onMoveCategory={(categoryId) => handleMoveCategory(dish, categoryId)}
                 />
               ))}
             </div>
@@ -671,15 +729,21 @@ export default function AdminMenuListPage() {
 function SortableDishCard({
   dish,
   categoryLabel,
+  categories,
+  isMoving,
   onEdit,
   onDelete,
   onToggleAvailability,
+  onMoveCategory,
 }: {
   dish: Dish
   categoryLabel: (categoryId: string) => string
+  categories: { id: string; name: string }[]
+  isMoving: boolean
   onEdit: () => void
   onDelete: () => void
   onToggleAvailability: () => void
+  onMoveCategory: (categoryId: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: dish.id,
@@ -754,6 +818,25 @@ function SortableDishCard({
       <div className="mt-3 text-sm text-gray-600">
         <span className="text-xs text-gray-500">Categoría:</span>{" "}
         {categoryLabel(dish.category_id)}
+      </div>
+
+      <div className="mt-2">
+        <label className="block text-xs text-gray-500 mb-1">Mover a categoría</label>
+        <select
+          value={dish.category_id}
+          onChange={(event) => onMoveCategory(event.target.value)}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          className="w-full p-2 border rounded text-sm"
+          disabled={isMoving}
+        >
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="mt-4 flex gap-3 text-sm">

@@ -91,6 +91,8 @@ export default function AdminCategoryPage() {
         return [...categories].sort((a, b) => a.position - b.position)
     }, [categories])
 
+    const isFormValid = Boolean(form.name.trim())
+
     const resetForm = () => {
         setForm({
             name: "",
@@ -234,7 +236,7 @@ export default function AdminCategoryPage() {
                             Estamos cargando las categorías...
                         </div>
                         <div className="h-1 w-full bg-blue-100 rounded overflow-hidden">
-                            <div className="h-full w-1/2 bg-blue-600 animate-pulse" />
+                            <div className="h-full w-full bg-blue-600 animate-pulse" />
                         </div>
                     </div>
                 )}
@@ -252,7 +254,9 @@ export default function AdminCategoryPage() {
                         </h2>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium mb-1">Nombre</label>
+                                <label className="block text-sm font-medium mb-1">
+                                    Nombre <span className="text-red-500">*</span>
+                                </label>
                                 <input
                                     type="text"
                                     value={form.name}
@@ -261,8 +265,13 @@ export default function AdminCategoryPage() {
                                         if (error) setError("")
                                     }}
                                     className="w-full p-2 border rounded"
-                                    maxLength={100}
+                                    maxLength={50}
+                                    required
+                                    aria-required="true"
                                 />
+                                <p className="mt-1 text-xs text-gray-500">
+                                {form.name.length}/50
+                            </p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium mb-1">Orden</label>
@@ -295,11 +304,16 @@ export default function AdminCategoryPage() {
                             Activa
                         </label>
 
-                        <div className="mt-4 flex gap-2">
+                        {!isFormValid && (
+                            <p className="mt-4 text-sm text-red-600">
+                                Completa los campos obligatorios marcados con *.
+                            </p>
+                        )}
+                        <div className="mt-2 flex gap-2">
                             <button
                                 onClick={handleSave}
                                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-60"
-                                disabled={isSaving}
+                                disabled={isSaving || !isFormValid}
                             >
                                 <span className="inline-flex items-center gap-2">
                                     {isSaving && (
