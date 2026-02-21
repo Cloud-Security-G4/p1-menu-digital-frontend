@@ -36,6 +36,7 @@ export default function AdminRestaurantPage() {
     const [isDeleting, setIsDeleting] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [toast, setToast] = useState("")
+    const [logoUrl, setLogoUrl] = useState<string | null>(null)
     const location = useLocation()
     const navigate = useNavigate()
 
@@ -54,6 +55,10 @@ export default function AdminRestaurantPage() {
     }, [toast])
 
     useEffect(() => {
+        setLogoUrl(restaurant?.logo || null)
+    }, [restaurant?.logo])
+
+    useEffect(() => {
         if (hasLoaded.current) return
         hasLoaded.current = true
         const loadData = async () => {
@@ -69,7 +74,21 @@ export default function AdminRestaurantPage() {
                             : null
                 setRestaurant(item || null)
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Error cargando restaurantes.")
+                if (err instanceof Error) {
+                    try {
+                        const parsed = JSON.parse(err.message) as { message?: string }
+                        if (parsed?.message === "El usuario no tiene un restaurante creado") {
+                            setRestaurant(null)
+                            setError("")
+                            return
+                        }
+                    } catch {
+                        // ignore parse errors
+                    }
+                    setError(err.message)
+                } else {
+                    setError("Error cargando restaurantes.")
+                }
             } finally {
                 setIsLoading(false)
             }
@@ -99,12 +118,14 @@ export default function AdminRestaurantPage() {
                     <h2 className="text-xl sm:text-2xl font-bold">
                         Mi restaurante
                     </h2>
-                    {/* <Link
-                        to="/admin/restaurant/nuevo"
-                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto text-center"
-                    >
-                        Agregar restaurante
-                    </Link> */}
+                    {!restaurant && !isLoading && (
+                        <Link
+                            to="/admin/restaurant/nuevo"
+                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto text-center"
+                        >
+                            Crear restaurante
+                        </Link>
+                    )}
                 </div>
 
                 {error && (
@@ -140,11 +161,22 @@ export default function AdminRestaurantPage() {
                             <div className="flex items-start justify-between gap-4">
                                 <div className="flex items-start gap-4 min-w-0">
                                     <div className="w-20 h-20 rounded bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                        {restaurant.logo ? (
+                                        {logoUrl ? (
                                             <img
-                                                src={restaurant.logo}
+                                                src={logoUrl}
                                                 alt="Logo del restaurante"
                                                 className="w-full h-full object-cover"
+                                                onError={() => {
+                                                    if (logoUrl.includes("/storage/")) {
+                                                        setLogoUrl(null)
+                                                        return
+                                                    }
+                                                    if (logoUrl.includes("/images/")) {
+                                                        setLogoUrl(logoUrl.replace("/images/", "/storage/images/"))
+                                                        return
+                                                    }
+                                                    setLogoUrl(null)
+                                                }}
                                             />
                                         ) : (
                                             <span className="text-gray-400 text-sm">

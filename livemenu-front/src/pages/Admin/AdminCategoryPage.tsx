@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useLocation } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 import {
     DndContext,
     PointerSensor,
@@ -51,6 +51,7 @@ export default function AdminCategoryPage() {
     const [isReordering, setIsReordering] = useState(false)
     const [pendingDelete, setPendingDelete] = useState<Category | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [missingRestaurant, setMissingRestaurant] = useState(false)
     const location = useLocation()
 
     const sensors = useSensors(
@@ -71,7 +72,23 @@ export default function AdminCategoryPage() {
                             : []
                 setCategories(normalizeCategories(items))
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Error cargando categorías.")
+                if (err instanceof Error) {
+                    try {
+                        const parsed = JSON.parse(err.message) as { message?: string }
+                        if (parsed?.message === "El usuario no tiene un restaurante creado") {
+                            setMissingRestaurant(true)
+                            setError("")
+                            setCategories([])
+                            setIsFormOpen(false)
+                            return
+                        }
+                    } catch {
+                        // ignore parse errors
+                    }
+                    setError(err.message)
+                    return
+                }
+                setError("Error cargando categorías.")
             } finally {
                 setIsLoading(false)
             }
@@ -80,11 +97,15 @@ export default function AdminCategoryPage() {
     }, [])
 
     useEffect(() => {
-        const resetSignal = (location.state as { resetCategoriesView?: number } | null)?.resetCategoriesView
-        if (!resetSignal) return
-        setIsFormOpen(false)
-        setEditingId(null)
-        resetForm()
+        const state = location.state as { resetCategoriesView?: number; openCreateCategory?: number } | null
+        if (state?.resetCategoriesView) {
+            setIsFormOpen(false)
+            setEditingId(null)
+            resetForm()
+        }
+        if (state?.openCreateCategory) {
+            openCreate()
+        }
     }, [location.state])
 
     const orderedCategories = useMemo(() => {
@@ -216,17 +237,31 @@ export default function AdminCategoryPage() {
             <div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-6">
                     <h1 className="text-xl sm:text-2xl font-bold">Categorías</h1>
-                    <button
-                        onClick={openCreate}
-                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto"
-                    >
-                        Nueva categoría
-                    </button>
+                    {!missingRestaurant && (
+                        <button
+                            onClick={openCreate}
+                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto"
+                        >
+                            Nueva categoría
+                        </button>
+                    )}
                 </div>
 
                 {error && (
                     <div className="mb-4 bg-red-50 text-red-700 px-4 py-2 rounded">
                         {error}
+                    </div>
+                )}
+
+                {missingRestaurant && !isLoading && (
+                    <div className="mb-4 bg-yellow-50 text-yellow-800 px-4 py-3 rounded flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <span>Primero debes crear tu restaurante para gestionar categorías.</span>
+                        <Link
+                            to="/admin/restaurant/nuevo"
+                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition text-center"
+                        >
+                            Crear restaurante
+                        </Link>
                     </div>
                 )}
 
@@ -241,13 +276,19 @@ export default function AdminCategoryPage() {
                     </div>
                 )}
 
-                {isReordering && (
+                {isReordering && !missingRestaurant && (
                     <div className="mb-4 text-sm text-gray-600">
                         Reordenando categorías...
                     </div>
                 )}
 
-                {isFormOpen && (
+                {!missingRestaurant && !isLoading && !error && categories.length === 0 && (
+                    <div className="mb-4 bg-white p-6 rounded-xl shadow text-gray-600">
+                        No hay categorías creadas todavía.
+                    </div>
+                )}
+
+                {isFormOpen && !missingRestaurant && (
                     <div className="bg-white p-6 rounded-xl shadow mb-6">
                         <h2 className="text-lg font-semibold mb-4">
                             {editingId ? "Editar categoría" : "Crear categoría"}
@@ -335,27 +376,29 @@ export default function AdminCategoryPage() {
                     </div>
                 )}
 
-                <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                >
-                    <SortableContext
-                        items={orderedCategories.map((item) => item.id)}
-                        strategy={verticalListSortingStrategy}
+                {!missingRestaurant && (
+                    <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEnd}
                     >
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {orderedCategories.map((category) => (
-                                <SortableCategoryCard
-                                    key={category.id}
-                                    category={category}
-                                    onEdit={() => openEdit(category)}
-                                    onDelete={() => setPendingDelete(category)}
-                                />
-                            ))}
-                        </div>
-                    </SortableContext>
-                </DndContext>
+                        <SortableContext
+                            items={orderedCategories.map((item) => item.id)}
+                            strategy={verticalListSortingStrategy}
+                        >
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                {orderedCategories.map((category) => (
+                                    <SortableCategoryCard
+                                        key={category.id}
+                                        category={category}
+                                        onEdit={() => openEdit(category)}
+                                        onDelete={() => setPendingDelete(category)}
+                                    />
+                                ))}
+                            </div>
+                        </SortableContext>
+                    </DndContext>
+                )}
 
                 {pendingDelete && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

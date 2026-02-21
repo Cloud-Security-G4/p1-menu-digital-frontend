@@ -16,12 +16,11 @@ type FormatKey = "png" | "svg"
 export default function AdminQrPage() {
     const [sizeKey, setSizeKey] = useState<SizeKey>("M")
     const [format, setFormat] = useState<FormatKey>("png")
-    const [domain, setDomain] = useState(() => {
+    const [domain] = useState(() => {
         const host = window.location.host || "example.com"
         return host
     })
     const [slug, setSlug] = useState("")
-    const [slugError, setSlugError] = useState("")
     const [downloadError, setDownloadError] = useState("")
     const [isDownloading, setIsDownloading] = useState(false)
     const [isLoadingSlug, setIsLoadingSlug] = useState(true)
@@ -55,8 +54,8 @@ export default function AdminQrPage() {
                 if (restaurant?.slug) {
                     setSlug(String(restaurant.slug))
                 }
-            } catch (err) {
-                setSlugError(err instanceof Error ? err.message : "No se pudo cargar el slug.")
+            } catch {
+                // ignore slug loading errors for now
             } finally {
                 setIsLoadingSlug(false)
             }
@@ -66,8 +65,8 @@ export default function AdminQrPage() {
 
     const buildQrUrl = () => {
         const params = new URLSearchParams()
-        if (format === "svg") params.set("format", "svg")
-        if (sizeKey.toLowerCase() !== "m") params.set("size", sizeKey.toLowerCase())
+        params.set("format", format)
+        params.set("size", sizeKey.toLowerCase())
 
         const base = getApiBase()
         const query = params.toString()
@@ -76,10 +75,7 @@ export default function AdminQrPage() {
 
     const handleDownload = async () => {
         const safeSlug = slug.trim()
-        if (!safeSlug) {
-            setSlugError("Configura el slug del restaurante para generar el QR.")
-            return
-        }
+        if (!safeSlug) return
 
         setDownloadError("")
         setIsDownloading(true)
