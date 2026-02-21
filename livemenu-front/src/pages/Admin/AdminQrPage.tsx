@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import AdminLayout from "../../components/layout/AdminLayout"
-import { QRCodeCanvas, QRCodeSVG } from "qrcode.react"
+import { getRestaurants } from "../../services/restaurantService"
+import { getApiBase } from "../../services/api"
 
 const SIZE_OPTIONS = {
     S: 200,
@@ -20,14 +21,14 @@ export default function AdminQrPage() {
         return host
     })
     const [slug, setSlug] = useState("")
-    const [includeLogo, setIncludeLogo] = useState(false)
-    const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
-    const [logoError, setLogoError] = useState("")
-
-    const exportCanvasRef = useRef<HTMLCanvasElement | null>(null)
-    const exportSvgRef = useRef<SVGSVGElement | null>(null)
-    const previewSize = 320
-
+    const [slugError, setSlugError] = useState("")
+    const [downloadError, setDownloadError] = useState("")
+    const [isDownloading, setIsDownloading] = useState(false)
+    const [isLoadingSlug, setIsLoadingSlug] = useState(true)
+    const [previewSvg, setPreviewSvg] = useState<string | null>(null)
+    const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+    const [previewError, setPreviewError] = useState("")
+    const [isLoadingPreview, setIsLoadingPreview] = useState(false)
     const qrValue = useMemo(() => {
         const normalizedDomain = domain
             .trim()
@@ -38,62 +39,156 @@ export default function AdminQrPage() {
         return `https://${normalizedDomain}/m/${encodeURIComponent(safeSlug)}`
     }, [domain, slug])
 
-    const handleLogoUpload = (file: File | null) => {
-        if (!file) return
-        setLogoError("")
-        if (file.size > 5 * 1024 * 1024) {
-            setLogoError("El logo no puede superar 5MB.")
-            return
+
+    useEffect(() => {
+        const loadSlug = async () => {
+            try {
+                const data = await getRestaurants()
+                const items = Array.isArray(data)
+                    ? data
+                    : Array.isArray(data?.data)
+                        ? data.data
+                        : data?.id
+                            ? [data]
+                            : []
+                const restaurant = items[0]
+                if (restaurant?.slug) {
+                    setSlug(String(restaurant.slug))
+                }
+            } catch (err) {
+                setSlugError(err instanceof Error ? err.message : "No se pudo cargar el slug.")
+            } finally {
+                setIsLoadingSlug(false)
+            }
         }
-        const reader = new FileReader()
-        reader.onload = () => {
-            setLogoDataUrl(typeof reader.result === "string" ? reader.result : null)
-            setIncludeLogo(true)
-        }
-        reader.readAsDataURL(file)
+        loadSlug()
+    }, [])
+
+    const buildQrUrl = () => {
+        const params = new URLSearchParams()
+        if (format === "svg") params.set("format", "svg")
+        if (sizeKey.toLowerCase() !== "m") params.set("size", sizeKey.toLowerCase())
+
+        const base = getApiBase()
+        const query = params.toString()
+        return query ? `${base}/admin/qr?${query}` : `${base}/admin/qr`
     }
 
-    const handleDownload = () => {
-        if (format === "png") {
-            const canvas = exportCanvasRef.current
-            if (!canvas) return
-            const dataUrl = canvas.toDataURL("image/png")
+    const handleDownload = async () => {
+        const safeSlug = slug.trim()
+        if (!safeSlug) {
+            setSlugError("Configura el slug del restaurante para generar el QR.")
+            return
+        }
+
+        setDownloadError("")
+        setIsDownloading(true)
+
+        try {
+            const url = buildQrUrl()
+            const token = localStorage.getItem("authToken")
+
+            const response = await fetch(url, {
+                method: "GET",
+                headers: {
+                    Accept: format === "svg" ? "image/svg+xml" : "image/png",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+            })
+
+            if (!response.ok) {
+                const message = await response.text()
+                throw new Error(message || "No se pudo descargar el QR.")
+            }
+
+            const contentType = response.headers.get("content-type") || ""
+            let extension = format
+            if (contentType.includes("svg")) {
+                extension = "svg"
+            } else if (contentType.includes("png")) {
+                extension = "png"
+            }
+
+            const blob = await response.blob()
             const link = document.createElement("a")
-            link.href = dataUrl
-            link.download = `qr-${sizeKey.toLowerCase()}.png`
+            link.href = URL.createObjectURL(blob)
+            link.download = `qr-${sizeKey.toLowerCase()}.${extension}`
             link.click()
+            URL.revokeObjectURL(link.href)
+        } catch (err) {
+            setDownloadError(err instanceof Error ? err.message : "No se pudo descargar el QR.")
+        } finally {
+            setIsDownloading(false)
+        }
+    }
+
+    useEffect(() => {
+        let isActive = true
+        const safeSlug = slug.trim()
+        if (!safeSlug) {
+            setPreviewSvg(null)
+            setPreviewImageUrl((prev) => {
+                if (prev) URL.revokeObjectURL(prev)
+                return null
+            })
             return
         }
 
-        const svg = exportSvgRef.current
-        if (!svg) return
-        const serializer = new XMLSerializer()
-        const svgString = serializer.serializeToString(svg)
-        const blob = new Blob([svgString], { type: "image/svg+xml" })
-        const link = document.createElement("a")
-        link.href = URL.createObjectURL(blob)
-        link.download = `qr-${sizeKey.toLowerCase()}.svg`
-        link.click()
-        URL.revokeObjectURL(link.href)
-    }
+        const loadPreview = async () => {
+            setIsLoadingPreview(true)
+            setPreviewError("")
+            try {
+                const url = buildQrUrl()
+                const token = localStorage.getItem("authToken")
+                const response = await fetch(url, {
+                    method: "GET",
+                    headers: {
+                        Accept: format === "svg" ? "image/svg+xml" : "image/png",
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                })
 
-    const previewLogoSettings = includeLogo && logoDataUrl
-        ? {
-            src: logoDataUrl,
-            height: Math.round(previewSize * 0.2),
-            width: Math.round(previewSize * 0.2),
-            excavate: true,
-        }
-        : undefined
+                if (!response.ok) {
+                    const message = await response.text()
+                    throw new Error(message || "No se pudo cargar el QR.")
+                }
 
-    const exportLogoSettings = includeLogo && logoDataUrl
-        ? {
-            src: logoDataUrl,
-            height: Math.round(SIZE_OPTIONS[sizeKey] * 0.2),
-            width: Math.round(SIZE_OPTIONS[sizeKey] * 0.2),
-            excavate: true,
+                const contentType = response.headers.get("content-type") || ""
+                if (contentType.includes("svg")) {
+                    const svgText = await response.text()
+                    if (!isActive) return
+                    setPreviewSvg(svgText)
+                    setPreviewImageUrl((prev) => {
+                        if (prev) URL.revokeObjectURL(prev)
+                        return null
+                    })
+                    return
+                }
+
+                const blob = await response.blob()
+                const objectUrl = URL.createObjectURL(blob)
+                if (!isActive) {
+                    URL.revokeObjectURL(objectUrl)
+                    return
+                }
+                setPreviewSvg(null)
+                setPreviewImageUrl((prev) => {
+                    if (prev) URL.revokeObjectURL(prev)
+                    return objectUrl
+                })
+            } catch (err) {
+                if (!isActive) return
+                setPreviewError(err instanceof Error ? err.message : "No se pudo cargar el QR.")
+            } finally {
+                if (isActive) setIsLoadingPreview(false)
+            }
         }
-        : undefined
+
+        loadPreview()
+        return () => {
+            isActive = false
+        }
+    }, [format, sizeKey, slug])
 
     return (
         <AdminLayout>
@@ -107,29 +202,9 @@ export default function AdminQrPage() {
 
                 <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
                     <div className="bg-white rounded-lg shadow p-6 flex flex-col gap-5">
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-                                Dominio
-                                <input
-                                    value={domain}
-                                    onChange={(event) => setDomain(event.target.value)}
-                                    className="border rounded px-3 py-2 text-gray-900"
-                                    placeholder="tudominio.com"
-                                />
-                            </label>
-                            <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-                                Slug del menú
-                                <input
-                                    value={slug}
-                                    onChange={(event) => setSlug(event.target.value)}
-                                    className="border rounded px-3 py-2 text-gray-900"
-                                    placeholder="mi-restaurante"
-                                />
-                            </label>
-                        </div>
 
                         <div className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-                            URL codificada
+                            URL
                             <div className="rounded bg-gray-50 px-3 py-2 text-gray-800 break-all">
                                 {qrValue}
                             </div>
@@ -160,83 +235,51 @@ export default function AdminQrPage() {
                                     <option value="png">PNG</option>
                                     <option value="svg">SVG</option>
                                 </select>
+      
                             </label>
                         </div>
 
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                                <input
-                                    type="checkbox"
-                                    checked={includeLogo}
-                                    onChange={(event) => setIncludeLogo(event.target.checked)}
-                                />
-                                Incluir logo central (opcional)
-                            </label>
-                            <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-                                Logo (máx. 5MB)
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={(event) => handleLogoUpload(event.target.files?.[0] || null)}
-                                    className="text-gray-700"
-                                />
-                                {logoError && (
-                                    <span className="text-xs text-red-600">{logoError}</span>
-                                )}
-                            </label>
-                        </div>
-
+                        {downloadError && (
+                            <p className="text-sm text-red-600">{downloadError}</p>
+                        )}
                         <button
                             onClick={handleDownload}
-                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto"
+                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto disabled:opacity-60"
+                            disabled={isDownloading || isLoadingSlug || !slug.trim()}
                         >
-                            Descargar QR
+                            {isDownloading ? "Descargando..." : "Descargar QR"}
                         </button>
                     </div>
 
                     <div className="bg-white rounded-lg shadow p-6 flex flex-col items-center gap-4">
                         <p className="text-sm text-gray-600">Preview en tiempo real</p>
                         <div className="flex items-center justify-center rounded-lg bg-gray-50 p-4 w-full">
-                            {format === "png" ? (
-                                <QRCodeCanvas
-                                    value={qrValue}
-                                    size={previewSize}
-                                    level="H"
-                                    includeMargin
-                                    imageSettings={previewLogoSettings}
+                            {isLoadingPreview ? (
+                                <div className="flex flex-col items-center gap-3 text-gray-500">
+                                    <span className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-blue-600" />
+                                    <span className="text-xs">Generando QR...</span>
+                                </div>
+                            ) : previewError ? (
+                                <p className="text-sm text-red-600">{previewError}</p>
+                            ) : previewSvg ? (
+                                <div
+                                    className="w-full max-w-[360px] sm:max-w-[420px] [&_svg]:w-full [&_svg]:h-auto"
+                                    dangerouslySetInnerHTML={{ __html: previewSvg }}
+                                />
+                            ) : previewImageUrl ? (
+                                <img
+                                    src={previewImageUrl}
+                                    alt="QR generado"
+                                    className="w-full max-w-[360px] sm:max-w-[420px] h-auto"
                                 />
                             ) : (
-                                <QRCodeSVG
-                                    value={qrValue}
-                                    size={previewSize}
-                                    level="H"
-                                    includeMargin
-                                    imageSettings={previewLogoSettings}
-                                />
+                                <span className="text-xs text-gray-400">Sin preview</span>
                             )}
                         </div>
                         <p className="text-xs text-gray-500 text-center">
                             Tamaños disponibles: S 200px, M 400px, L 800px, XL 1200px.
                         </p>
                     </div>
-                </div>
-                <div className="absolute -left-[9999px] -top-[9999px]">
-                    <QRCodeCanvas
-                        value={qrValue}
-                        size={SIZE_OPTIONS[sizeKey]}
-                        level="H"
-                        includeMargin
-                        ref={exportCanvasRef}
-                        imageSettings={exportLogoSettings}
-                    />
-                    <QRCodeSVG
-                        value={qrValue}
-                        size={SIZE_OPTIONS[sizeKey]}
-                        level="H"
-                        includeMargin
-                        ref={exportSvgRef}
-                        imageSettings={exportLogoSettings}
-                    />
                 </div>
             </div>
         </AdminLayout>

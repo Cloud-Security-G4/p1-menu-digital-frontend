@@ -27,11 +27,16 @@ const API_BASE = API_URL
   : joinUrl(API_HOST, API_PREFIX)
 const FALLBACK_BASE = joinUrl("http://127.0.0.1:8000", API_PREFIX)
 
-export async function apiFetch(endpoint: string, options?: RequestInit) {
+export function getApiBase() {
   const base = API_BASE.startsWith("http") ? API_BASE : FALLBACK_BASE
   if (base !== API_BASE) {
     console.warn("[apiFetch] API_BASE invalido, usando fallback:", API_BASE, FALLBACK_BASE)
   }
+  return base
+}
+
+export async function apiFetch(endpoint: string, options?: RequestInit) {
+  const base = getApiBase()
   const token = localStorage.getItem("authToken")
 
   const response = await fetch(`${base}${endpoint}`, {
