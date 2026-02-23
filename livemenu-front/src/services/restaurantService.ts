@@ -36,7 +36,7 @@ export async function updateRestaurant(id: string, payload: RestaurantPayload) {
 }
 
 export async function deleteRestaurant(id: string) {
-    return apiFetch(`/admin/restaurant?id=${encodeURIComponent(id)}`, {
+    return apiFetch(`/admin/restaurant/${encodeURIComponent(id)}`, {
         method: "DELETE",
     })
 }

@@ -1,33 +1,12 @@
 import { useEffect, useState } from "react"
 import AdminLayout from "../../components/layout/AdminLayout"
-import { getRestaurants } from "../../services/restaurantService"
 import { getCategories } from "../../services/categoryService"
 import { getDishes } from "../../services/dishService"
 
 // Admin landing
 export default function AdminDashboardPage() {
-    const [restaurantsCount, setRestaurantsCount] = useState<number | null>(null)
     const [categoriesCount, setCategoriesCount] = useState<number | null>(null)
     const [availableDishesCount, setAvailableDishesCount] = useState<number | null>(null)
-
-    useEffect(() => {
-        const loadRestaurants = async () => {
-            try {
-                const data = await getRestaurants()
-                const items = Array.isArray(data)
-                    ? data
-                    : Array.isArray(data?.data)
-                        ? data.data
-                        : data?.id
-                            ? [data]
-                            : []
-                setRestaurantsCount(items.length)
-            } catch {
-                setRestaurantsCount(0)
-            }
-        }
-        loadRestaurants()
-    }, [])
 
     useEffect(() => {
         const loadCategories = async () => {

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
+import { Trash2 } from "lucide-react"
 import AdminLayout from "../../components/layout/AdminLayout"
+import { getApiBase } from "../../services/api"
 import {
     createRestaurant,
     getRestaurants,
@@ -29,6 +31,12 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
     })
     const [saved, setSaved] = useState(false)
     const [logoError, setLogoError] = useState("")
+    const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
+    const [logoDisplayUrl, setLogoDisplayUrl] = useState<string | null>(null)
+    const [isUploadingLogo, setIsUploadingLogo] = useState(false)
+    const [isDeleteLogoOpen, setIsDeleteLogoOpen] = useState(false)
+    const [isDeletingLogo, setIsDeletingLogo] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
     const [error, setError] = useState("")
     const [nameError, setNameError] = useState("")
     const isFormValid = Boolean(profile.name.trim())
@@ -45,6 +53,11 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
     useEffect(() => {
         const loadData = async () => {
             try {
+                if (isCreateMode) {
+                    setProfile({ id: `rest-${Date.now()}`, ...emptyProfile })
+                    setError("")
+                    return
+                }
                 const data = await getRestaurants()
                 const items = Array.isArray(data)
                     ? data
@@ -53,32 +66,103 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
                         : data?.id
                             ? [data]
                             : []
-                if (!isCreateMode) {
-                    const match = items.find((item: Restaurant) => item.id === (id || "default")) || items[0]
-                    if (match) {
-                        setProfile({
-                            ...emptyProfile,
-                            ...match,
-                            id: match.id,
-                            logo: match.logo || "",
-                        })
-                    }
-                } else {
-                    setProfile({ id: `rest-${Date.now()}`, ...emptyProfile })
+                const match = items.find((item: Restaurant) => item.id === (id || "default")) || items[0]
+                if (match) {
+                    setProfile({
+                        ...emptyProfile,
+                        ...match,
+                        id: match.id,
+                        name: match.name || "",
+                        description: match.description || "",
+                        phone: match.phone || "",
+                        address: match.address || "",
+                        logo: match.logo || "",
+                    })
                 }
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Error cargando restaurante.")
+                if (err instanceof Error) {
+                    try {
+                        const parsed = JSON.parse(err.message) as { message?: string }
+                        if (parsed?.message === "El usuario no tiene un restaurante creado") {
+                            setError("")
+                            return
+                        }
+                    } catch {
+                        // ignore parse errors
+                    }
+                    setError(err.message)
+                } else {
+                    setError("Error cargando restaurante.")
+                }
             }
         }
         loadData()
     }, [id, isCreateMode])
+
+    useEffect(() => {
+        setLogoDisplayUrl(logoPreviewUrl || profile.logo || null)
+    }, [logoPreviewUrl, profile.logo])
+
+    useEffect(() => {
+        if (!saved || isCreateMode) return
+        const timer = window.setTimeout(() => {
+            navigate("/admin/restaurant")
+        }, 3000)
+        return () => window.clearTimeout(timer)
+    }, [saved, isCreateMode, navigate])
 
     const handleChange = (field: keyof RestaurantPayload | "email", value: string) => {
         setProfile((prev) => ({ ...prev, [field]: value }))
         if (saved) setSaved(false)
     }
 
-    const handleLogoFile = (file: File | null) => {
+    const resolveLogoUrl = (path: string) => {
+        if (path.startsWith("http")) return path
+        const base = getApiBase().replace(/\/api\/v1\/?$/, "")
+        const cleanPath = path.replace(/^\/+/, "")
+        return `${base}/${cleanPath}`
+    }
+
+    const getFilenameFromUrl = (url: string) => {
+        const cleanUrl = url.split("?")[0]
+        const parts = cleanUrl.split("/")
+        return parts[parts.length - 1]
+    }
+
+    const handleDeleteLogo = async () => {
+        if (!profile.logo) return
+        const filename = getFilenameFromUrl(profile.logo)
+        if (!filename) return
+
+        setIsDeletingLogo(true)
+        setLogoError("")
+        try {
+            const token = localStorage.getItem("authToken")
+            const response = await fetch(`${getApiBase()}/admin/upload/${encodeURIComponent(filename)}`, {
+                method: "DELETE",
+                headers: {
+                    "Accept": "application/json",
+                    "X-Requested-With": "XMLHttpRequest",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+            })
+
+            if (!response.ok) {
+                const message = await response.text()
+                throw new Error(message || "No se pudo eliminar el logo.")
+            }
+
+            setProfile((prev) => ({ ...prev, logo: "" }))
+            setLogoPreviewUrl(null)
+            setIsDeleteLogoOpen(false)
+        } catch (err) {
+            setLogoError(err instanceof Error ? err.message : "No se pudo eliminar el logo.")
+        } finally {
+            setIsDeletingLogo(false)
+        }
+    }
+
+    const handleLogoFile = async (file: File | null) => {
         if (!file) return
         const maxSizeBytes = 5 * 1024 * 1024
         if (file.size > maxSizeBytes) {
@@ -90,15 +174,49 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
             return
         }
 
-        const reader = new FileReader()
-        reader.onload = () => {
-            const result = typeof reader.result === "string" ? reader.result : ""
-            if (result) {
-                setLogoError("")
-                setProfile((prev) => ({ ...prev, logo: result }))
+        setLogoError("")
+        setIsUploadingLogo(true)
+
+        try {
+            const localPreview = URL.createObjectURL(file)
+            setLogoPreviewUrl((prev) => {
+                if (prev?.startsWith("blob:")) {
+                    URL.revokeObjectURL(prev)
+                }
+                return localPreview
+            })
+            const formData = new FormData()
+            formData.append("image", file)
+            const token = localStorage.getItem("authToken")
+
+            const response = await fetch(`${getApiBase()}/admin/upload`, {
+                method: "POST",
+                headers: {
+                    "Accept": "application/json",
+                    "X-Requested-With": "XMLHttpRequest",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: formData,
+            })
+
+            if (!response.ok) {
+                const message = await response.text()
+                throw new Error(message || "No se pudo subir el logo.")
             }
+
+            const data = await response.json()
+            const uploadItem = Array.isArray(data) ? data[0] : data
+            const rawPath = uploadItem?.url || uploadItem?.path || uploadItem?.filename
+            if (!rawPath) {
+                throw new Error("Respuesta de upload inválida.")
+            }
+
+            setProfile((prev) => ({ ...prev, logo: resolveLogoUrl(String(rawPath)) }))
+        } catch (err) {
+            setLogoError(err instanceof Error ? err.message : "No se pudo subir el logo.")
+        } finally {
+            setIsUploadingLogo(false)
         }
-        reader.readAsDataURL(file)
     }
 
     const updateHoursForDay = (dayKey: string, ranges: { open: string; close: string }[]) => {
@@ -142,6 +260,7 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
             return
         }
         try {
+            setIsSaving(true)
             const payload: RestaurantPayload = {
                 name: profile.name,
                 description: profile.description,
@@ -159,6 +278,8 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : "Error guardando restaurante.")
+        } finally {
+            setIsSaving(false)
         }
     }
 
@@ -185,9 +306,9 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
                             type="button"
                             onClick={handleSave}
                             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-60"
-                            disabled={!isFormValid}
+                            disabled={!isFormValid || isSaving}
                         >
-                            {isCreateMode ? "Crear restaurante" : "Guardar cambios"}
+                            {isSaving ? "Guardando..." : (isCreateMode ? "Crear restaurante" : "Guardar cambios")}
                         </button>
                     </div>
                 </div>
@@ -216,26 +337,41 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
                             <label className="block text-sm font-medium mb-1">
                                 Logo (URL o archivo)
                             </label>
-                            <input
-                                type="text"
-                                value={profile.logo || ""}
-                                onChange={(e) => {
-                                    handleChange("logo", e.target.value)
-                                    if (logoError) setLogoError("")
-                                }}
-                                className={`w-full p-2 border rounded ${logoError ? "border-red-500" : "border-gray-300"}`}
-                                placeholder="https://..."
-                            />
-                            <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => handleLogoFile(e.target.files?.[0] || null)}
-                                className="mt-2 w-full text-sm"
-                            />
-                            {logoError && (
-                                <p className="mt-1 text-sm text-red-600">
-                                    {logoError}
-                                </p>
+                            {isCreateMode ? (
+                                <div className="rounded border border-dashed p-3 text-sm text-gray-600 bg-gray-50">
+                                    Podrás cargar el logo luego, desde la edición del restaurante.
+                                </div>
+                            ) : (
+                                <>
+                                    <input
+                                        type="text"
+                                        value={profile.logo || ""}
+                                        onChange={(e) => {
+                                            handleChange("logo", e.target.value)
+                                            if (logoPreviewUrl) setLogoPreviewUrl(null)
+                                            if (logoError) setLogoError("")
+                                        }}
+                                        className={`w-full p-2 border rounded ${logoError ? "border-red-500" : "border-gray-300"}`}
+                                        placeholder="https://..."
+                                    />
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => handleLogoFile(e.target.files?.[0] || null)}
+                                        className="mt-2 w-full text-sm"
+                                        disabled={isUploadingLogo}
+                                    />
+                                    {logoError && (
+                                        <p className="mt-1 text-sm text-red-600">
+                                            {logoError}
+                                        </p>
+                                    )}
+                                    {isUploadingLogo && (
+                                        <p className="mt-1 text-sm text-gray-500">
+                                            Subiendo logo...
+                                        </p>
+                                    )}
+                                </>
                             )}
                         </div>
 
@@ -395,11 +531,31 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
 
                         <div className="flex items-start gap-4">
                             <div className="w-20 h-20 rounded bg-gray-100 flex items-center justify-center overflow-hidden">
-                                {profile.logo ? (
+                                {logoDisplayUrl ? (
                                     <img
-                                        src={profile.logo}
+                                        src={logoDisplayUrl}
                                         alt="Logo del restaurante"
                                         className="w-full h-full object-cover"
+                                        onError={() => {
+                                            if (!logoDisplayUrl) return
+                                            if (logoDisplayUrl.startsWith("blob:")) {
+                                                setLogoDisplayUrl(null)
+                                                return
+                                            }
+                                            if (logoDisplayUrl.includes("/storage/")) {
+                                                setLogoDisplayUrl(null)
+                                                return
+                                            }
+                                            if (logoDisplayUrl.includes("/api/v1/images/")) {
+                                                setLogoDisplayUrl(logoDisplayUrl.replace("/api/v1/images/", "/images/"))
+                                                return
+                                            }
+                                            if (logoDisplayUrl.includes("/images/")) {
+                                                setLogoDisplayUrl(logoDisplayUrl.replace("/images/", "/storage/images/"))
+                                                return
+                                            }
+                                            setLogoDisplayUrl(null)
+                                        }}
                                     />
                                 ) : (
                                     <span className="text-gray-400 text-sm">
@@ -416,6 +572,17 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
                                     {profile.description || "Descripción del restaurante."}
                                 </p>
                             </div>
+
+                            {(profile.logo || logoPreviewUrl) && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsDeleteLogoOpen(true)}
+                                    className="ml-auto text-red-600 hover:text-red-700"
+                                    aria-label="Eliminar logo"
+                                >
+                                    <Trash2 size={18} />
+                                </button>
+                            )}
                         </div>
 
                         <div className="mt-4 text-sm space-y-2">
@@ -439,6 +606,37 @@ export default function AdminRestaurantEditPage({ mode }: { mode?: "create" | "e
                     </div>
                 </div>
             </div>
+
+            {isDeleteLogoOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+                        <h3 className="text-lg font-semibold mb-2">
+                            ¿Eliminar logo?
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Esta acción no se puede deshacer.
+                        </p>
+                        <div className="flex gap-2 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setIsDeleteLogoOpen(false)}
+                                className="px-4 py-2 rounded border"
+                                disabled={isDeletingLogo}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteLogo}
+                                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                                disabled={isDeletingLogo}
+                            >
+                                {isDeletingLogo ? "Eliminando..." : "Eliminar"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AdminLayout>
     )
 }

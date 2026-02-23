@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
-import { useLocation } from "react-router-dom"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Link, useLocation } from "react-router-dom"
+import { Trash2 } from "lucide-react"
 import {
   DndContext,
   PointerSensor,
@@ -17,7 +18,8 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import AdminLayout from "../../components/layout/AdminLayout"
 import { getCategories } from "../../services/categoryService"
-import { createDish, deleteDish, getDish, getDishes, reorderDishes, updateDish, updateDishAvailability, type Dish, type DishPayload } from "../../services/dishService"
+import { createDish, deleteDish, getDish, getDishes, updateDish, updateDishAvailability, type Dish, type DishPayload } from "../../services/dishService"
+import { getApiBase } from "../../services/api"
 
 // Dishes admin: list, filters, and CRUD UI
 export default function AdminMenuListPage() {
@@ -45,6 +47,9 @@ export default function AdminMenuListPage() {
     position: 1,
   })
   const [imageError, setImageError] = useState("")
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isReordering, setIsReordering] = useState(false)
@@ -53,6 +58,9 @@ export default function AdminMenuListPage() {
   const [pendingDelete, setPendingDelete] = useState<Dish | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [movingDishId, setMovingDishId] = useState<string | null>(null)
+  const [missingRestaurant, setMissingRestaurant] = useState(false)
+  const [isDeleteImageOpen, setIsDeleteImageOpen] = useState(false)
+  const [isDeletingImage, setIsDeletingImage] = useState(false)
   const [toast, setToast] = useState("")
   const location = useLocation()
 
@@ -83,6 +91,55 @@ export default function AdminMenuListPage() {
     position: Number(item.position) || 1,
   })
 
+  const resolveImageUrl = (path: string) => {
+    if (path.startsWith("http")) return path
+    const base = getApiBase().replace(/\/+$/, "")
+    const cleanPath = path.replace(/^\/+/, "")
+    return `${base}/${cleanPath}`
+  }
+
+  const getFilenameFromUrl = (url: string) => {
+    const cleanUrl = url.split("?")[0]
+    const parts = cleanUrl.split("/")
+    return parts[parts.length - 1]
+  }
+
+  const handleDeleteImage = async () => {
+    if (!form.imageUrl) return
+    const filename = getFilenameFromUrl(form.imageUrl)
+    if (!filename) return
+
+    setIsDeletingImage(true)
+    setImageError("")
+    try {
+      const token = localStorage.getItem("authToken")
+      const response = await fetch(`${getApiBase()}/admin/upload/${encodeURIComponent(filename)}`, {
+        method: "DELETE",
+        headers: {
+          "Accept": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || "No se pudo eliminar la imagen.")
+      }
+
+      setForm((prev) => ({ ...prev, imageUrl: "" }))
+      setImagePreviewUrl(null)
+      if (imageInputRef.current) {
+        imageInputRef.current.value = ""
+      }
+      setIsDeleteImageOpen(false)
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "No se pudo eliminar la imagen.")
+    } finally {
+      setIsDeletingImage(false)
+    }
+  }
+
   const loadData = async () => {
       try {
         setIsLoading(true)
@@ -110,7 +167,24 @@ export default function AdminMenuListPage() {
               : []
         setCategories([{ id: "all", name: "Todas" }, ...cats.map((c: any) => ({ id: c.id, name: c.name }))])
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Error cargando platos.")
+        if (err instanceof Error) {
+          try {
+            const parsed = JSON.parse(err.message) as { message?: string }
+            if (parsed?.message === "El usuario no tiene un restaurante creado") {
+              setMissingRestaurant(true)
+              setError("")
+              setDishes([])
+              setCategories([{ id: "all", name: "Todas" }])
+              setIsFormOpen(false)
+              return
+            }
+          } catch {
+            // ignore parse errors
+          }
+          setError(err.message)
+          return
+        }
+        setError("Error cargando platos.")
       } finally {
         setIsLoading(false)
       }
@@ -124,11 +198,14 @@ export default function AdminMenuListPage() {
     return [...dishes].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
   }, [dishes])
 
+  const hasCategories = categories.some((cat) => cat.id !== "all")
+
   const isFormValid = Boolean(
     form.name.trim() &&
     form.description.trim() &&
     form.price.trim() &&
-    form.categoryId
+    form.categoryId &&
+    hasCategories
   )
 
   const filteredDishes = useMemo(() => {
@@ -168,6 +245,10 @@ export default function AdminMenuListPage() {
     })
     setEditingId(null)
     setImageError("")
+    setImagePreviewUrl(null)
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ""
+    }
   }
 
   const openCreate = () => {
@@ -195,6 +276,7 @@ export default function AdminMenuListPage() {
         tagsText: (normalized.tags || []).join(", "),
         position: normalized.position ?? 1,
       })
+      setImagePreviewUrl(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cargando plato.")
     } finally {
@@ -202,7 +284,7 @@ export default function AdminMenuListPage() {
     }
   }
 
-  const handleImageFile = (file: File | null) => {
+  const handleImageFile = async (file: File | null) => {
     if (!file) return
     const maxSizeBytes = 5 * 1024 * 1024
     if (file.size > maxSizeBytes) {
@@ -214,15 +296,53 @@ export default function AdminMenuListPage() {
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : ""
-      if (result) {
-        setImageError("")
-        setForm((prev) => ({ ...prev, imageUrl: result }))
+    setImageError("")
+    setIsUploadingImage(true)
+
+    try {
+      const localPreview = URL.createObjectURL(file)
+      setImagePreviewUrl((prev) => {
+        if (prev?.startsWith("blob:")) {
+          URL.revokeObjectURL(prev)
+        }
+        return localPreview
+      })
+
+      const formData = new FormData()
+      formData.append("image", file)
+      const token = localStorage.getItem("authToken")
+
+      const response = await fetch(`${getApiBase()}/admin/upload`, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || "No se pudo subir la imagen.")
+      }
+
+      const data = await response.json()
+      const uploadItem = Array.isArray(data) ? data[0] : data
+      const rawPath = uploadItem?.url || uploadItem?.path || uploadItem?.filename
+      if (!rawPath) {
+        throw new Error("Respuesta de upload inválida.")
+      }
+
+      setForm((prev) => ({ ...prev, imageUrl: resolveImageUrl(String(rawPath)) }))
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "No se pudo subir la imagen.")
+    } finally {
+      setIsUploadingImage(false)
+      if (imageInputRef.current) {
+        imageInputRef.current.value = ""
       }
     }
-    reader.readAsDataURL(file)
   }
 
   const handleSave = async () => {
@@ -359,7 +479,23 @@ export default function AdminMenuListPage() {
 
     try {
       setIsReordering(true)
-      await reorderDishes(reordered.map((item) => ({ id: item.id, position: item.position })))
+      await Promise.all(
+        reordered.map((item) => {
+          const payload: DishPayload = {
+            name: item.name,
+            description: item.description,
+            price: Number(item.price) || 0,
+            offer_price: item.offer_price ?? null,
+            image_url: item.image_url ?? null,
+            available: item.available,
+            featured: item.featured,
+            tags: Array.isArray(item.tags) ? item.tags : [],
+            position: item.position ?? 1,
+            category_id: item.category_id,
+          }
+          return updateDish(item.id, payload)
+        })
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error actualizando el orden.")
     } finally {
@@ -375,17 +511,51 @@ export default function AdminMenuListPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-6">
           <h1 className="text-xl sm:text-2xl font-bold">Platos</h1>
 
-          <button
-            onClick={openCreate}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto"
-          >
-            Crear Plato
-          </button>
+          {!missingRestaurant && (
+            <button
+              onClick={openCreate}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition w-full sm:w-auto disabled:opacity-60"
+              disabled={!hasCategories}
+            >
+              Crear Plato
+            </button>
+          )}
         </div>
 
         {error && (
           <div className="mb-4 bg-red-50 text-red-700 px-4 py-2 rounded">
             {error}
+          </div>
+        )}
+
+        {missingRestaurant && !isLoading && (
+          <div className="mb-4 bg-yellow-50 text-yellow-800 px-4 py-3 rounded flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span>Primero debes crear tu restaurante para gestionar platos.</span>
+            <Link
+              to="/admin/restaurant/nuevo"
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition text-center"
+            >
+              Crear restaurante
+            </Link>
+          </div>
+        )}
+
+        {!missingRestaurant && !isLoading && !error && dishes.length === 0 && (
+          <div className="mb-4 bg-white p-6 rounded-xl shadow text-gray-600">
+            No hay platos creados todavía.
+          </div>
+        )}
+
+        {!missingRestaurant && !isLoading && !error && !hasCategories && (
+          <div className="mb-4 bg-yellow-50 text-yellow-800 px-4 py-3 rounded flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span>Primero debes crear al menos una categoría para registrar platos.</span>
+            <Link
+              to="/admin/categorias"
+              state={{ openCreateCategory: Date.now() }}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition text-center"
+            >
+              Crear categoría
+            </Link>
           </div>
         )}
 
@@ -413,7 +583,8 @@ export default function AdminMenuListPage() {
         )}
 
         {/* FILTERS */}
-        <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+        {!missingRestaurant && (
+          <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Nombre</label>
             <input
@@ -430,12 +601,17 @@ export default function AdminMenuListPage() {
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               className="w-full p-2 border rounded"
+              disabled={!hasCategories}
             >
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
+              {hasCategories ? (
+                categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))
+              ) : (
+                <option value="all">Sin categorías</option>
+              )}
             </select>
           </div>
           <div>
@@ -458,10 +634,11 @@ export default function AdminMenuListPage() {
             />
             Mostrar eliminados
           </label> */}
-        </div>
+          </div>
+        )}
 
         {/* FORM */}
-        {isFormOpen && (
+        {isFormOpen && !missingRestaurant && (
           <div className="bg-white p-6 rounded-xl shadow mb-6">
             <h2 className="text-lg font-semibold mb-4">
               {editingId ? "Editar plato" : "Nuevo plato"}
@@ -546,13 +723,23 @@ export default function AdminMenuListPage() {
                     className="w-full p-2 border rounded"
                     required
                     aria-required="true"
+                    disabled={!hasCategories}
                   >
-                    {categories.filter((cat) => cat.id !== "all").map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
+                    {hasCategories ? (
+                      categories.filter((cat) => cat.id !== "all").map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">Sin categorías</option>
+                    )}
                   </select>
+                  {!hasCategories && (
+                    <p className="mt-1 text-xs text-yellow-700">
+                      Crea una categoría antes de registrar platos.
+                    </p>
+                  )}
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -590,6 +777,7 @@ export default function AdminMenuListPage() {
                     value={form.imageUrl}
                     onChange={(e) => {
                       setForm((prev) => ({ ...prev, imageUrl: e.target.value }))
+                      if (imagePreviewUrl) setImagePreviewUrl(null)
                       if (imageError) setImageError("")
                     }}
                     className={`w-full p-2 border rounded ${imageError ? "border-red-500" : "border-gray-300"}`}
@@ -598,11 +786,16 @@ export default function AdminMenuListPage() {
                   <input
                     type="file"
                     accept="image/*"
+                    ref={imageInputRef}
                     onChange={(e) => handleImageFile(e.target.files?.[0] || null)}
                     className="mt-2 w-full text-sm"
+                    disabled={isUploadingImage}
                   />
                   {imageError && (
                     <p className="mt-1 text-sm text-red-600">{imageError}</p>
+                  )}
+                  {isUploadingImage && (
+                    <p className="mt-1 text-sm text-gray-500">Subiendo imagen...</p>
                   )}
                 </div>
                 <div>
@@ -620,8 +813,29 @@ export default function AdminMenuListPage() {
                   <p className="text-sm font-medium mb-2">Vista previa</p>
                   <div className="flex items-center gap-3">
                     <div className="w-16 h-16 bg-white rounded overflow-hidden flex items-center justify-center">
-                      {form.imageUrl ? (
-                        <img src={form.imageUrl} alt="Foto del plato" className="w-full h-full object-cover" />
+                      {imagePreviewUrl || form.imageUrl ? (
+                        <img
+                          src={imagePreviewUrl || form.imageUrl}
+                          alt="Foto del plato"
+                          className="w-full h-full object-cover"
+                          onError={(event) => {
+                            const target = event.currentTarget
+                            const currentSrc = target.src
+                            if (currentSrc.includes("/storage/")) {
+                              target.src = ""
+                              return
+                            }
+                            if (currentSrc.includes("/api/v1/images/")) {
+                              target.src = currentSrc.replace("/api/v1/images/", "/images/")
+                              return
+                            }
+                            if (currentSrc.includes("/images/")) {
+                              target.src = currentSrc.replace("/images/", "/storage/images/")
+                              return
+                            }
+                            target.src = ""
+                          }}
+                        />
                       ) : (
                         <span className="text-xs text-gray-400">Foto</span>
                       )}
@@ -630,6 +844,16 @@ export default function AdminMenuListPage() {
                       <p className="font-semibold">{form.name || "Nombre del plato"}</p>
                       <p className="text-xs text-gray-500">{form.description || "Descripción"}</p>
                     </div>
+                    {(imagePreviewUrl || form.imageUrl) && (
+                      <button
+                        type="button"
+                        onClick={() => setIsDeleteImageOpen(true)}
+                        className="ml-auto text-red-600 hover:text-red-700"
+                        aria-label="Eliminar imagen"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -662,32 +886,34 @@ export default function AdminMenuListPage() {
         )}
 
         {/* CARDS */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={filteredDishes.map((dish) => dish.id)}
-            strategy={verticalListSortingStrategy}
+        {!missingRestaurant && (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredDishes.map((dish) => (
-                <SortableDishCard
-                  key={dish.id}
-                  dish={dish}
-                  categoryLabel={categoryLabel}
-                  categories={categories.filter((cat) => cat.id !== "all")}
-                  isMoving={movingDishId === dish.id}
-                  onEdit={() => openEdit(dish)}
-                  onDelete={() => setPendingDelete(dish)}
-                  onToggleAvailability={() => handleAvailability(dish)}
-                  onMoveCategory={(categoryId) => handleMoveCategory(dish, categoryId)}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+            <SortableContext
+              items={filteredDishes.map((dish) => dish.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filteredDishes.map((dish) => (
+                  <SortableDishCard
+                    key={dish.id}
+                    dish={dish}
+                    categoryLabel={categoryLabel}
+                    categories={categories.filter((cat) => cat.id !== "all")}
+                    isMoving={movingDishId === dish.id}
+                    onEdit={() => openEdit(dish)}
+                    onDelete={() => setPendingDelete(dish)}
+                    onToggleAvailability={() => handleAvailability(dish)}
+                    onMoveCategory={(categoryId) => handleMoveCategory(dish, categoryId)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
 
         {pendingDelete && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -722,6 +948,37 @@ export default function AdminMenuListPage() {
         )}
 
       </div>
+
+      {isDeleteImageOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold mb-2">
+              ¿Eliminar imagen?
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setIsDeleteImageOpen(false)}
+                className="px-4 py-2 rounded border"
+                disabled={isDeletingImage}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteImage}
+                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                disabled={isDeletingImage}
+              >
+                {isDeletingImage ? "Eliminando..." : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   )
 }
@@ -748,6 +1005,10 @@ function SortableDishCard({
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: dish.id,
   })
+  const [cardImageUrl, setCardImageUrl] = useState<string | null>(dish.image_url ?? null)
+  useEffect(() => {
+    setCardImageUrl(dish.image_url ?? null)
+  }, [dish.image_url])
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -764,8 +1025,27 @@ function SortableDishCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="w-16 h-16 rounded bg-gray-100 overflow-hidden flex items-center justify-center">
-            {dish.image_url ? (
-              <img src={dish.image_url} alt={dish.name} className="w-full h-full object-cover" />
+            {cardImageUrl ? (
+              <img
+                src={cardImageUrl}
+                alt={dish.name}
+                className="w-full h-full object-cover"
+                onError={() => {
+                  if (cardImageUrl.includes("/storage/")) {
+                    setCardImageUrl(null)
+                    return
+                  }
+                  if (cardImageUrl.includes("/api/v1/images/")) {
+                    setCardImageUrl(cardImageUrl.replace("/api/v1/images/", "/images/"))
+                    return
+                  }
+                  if (cardImageUrl.includes("/images/")) {
+                    setCardImageUrl(cardImageUrl.replace("/images/", "/storage/images/"))
+                    return
+                  }
+                  setCardImageUrl(null)
+                }}
+              />
             ) : (
               <span className="text-xs text-gray-400">Foto</span>
             )}
