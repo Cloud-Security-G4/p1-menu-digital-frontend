@@ -33,6 +33,12 @@ Crear un archivo `.env` en `livemenu-front/`:
 VITE_API_URL=http://localhost:8000/api/v1
 ```
 
+3. En caso de que no se instale lucide-react acutomáticamente ejecutar:
+
+```
+npm install lucide-react
+```
+
 ## Desarrollo local
 
 ```
