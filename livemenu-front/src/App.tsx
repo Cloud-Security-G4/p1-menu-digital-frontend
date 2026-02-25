@@ -6,6 +6,7 @@ import AdminRestaurantPage from "./pages/Admin/AdminRestaurantPage"
 import AdminRestaurantEditPage from "./pages/Admin/AdminRestaurantEditPage"
 import AdminCategoryPage from "./pages/Admin/AdminCategoryPage"
 import AdminQrPage from "./pages/Admin/AdminQrPage"
+import PublicMenuPage from "./pages/PublicMenuPage"
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
@@ -30,6 +31,7 @@ function App() {
         <Route path="/admin/platos" element={<RequireAuth><AdminMenuListPage /></RequireAuth>} />
         <Route path="/admin/categorias" element={<RequireAuth><AdminCategoryPage /></RequireAuth>} />
         <Route path="/admin/qr" element={<RequireAuth><AdminQrPage /></RequireAuth>} />
+        <Route path="/m/:slug" element={<PublicMenuPage />} />
       </Routes>
     </BrowserRouter>
   )

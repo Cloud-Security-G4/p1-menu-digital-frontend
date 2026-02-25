@@ -35,7 +35,7 @@ export default function AdminQrPage() {
             .replace(/\/+$/, "")
             || "example.com"
         const safeSlug = slug.trim() || "mi-restaurante"
-        return `https://${normalizedDomain}/m/${encodeURIComponent(safeSlug)}`
+        return `http://${normalizedDomain}/m/${encodeURIComponent(safeSlug)}`
     }, [domain, slug])
 
 
