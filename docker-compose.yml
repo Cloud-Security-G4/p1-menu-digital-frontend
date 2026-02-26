@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  frontend:
+    build:
+      context: ./livemenu-front
+    container_name: menu-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - menu-net
+
+networks:
+  menu-net:
+    external: true
+    driver: bridge
