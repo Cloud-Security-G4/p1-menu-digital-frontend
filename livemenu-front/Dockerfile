@@ -1,12 +1,18 @@
-# Build stage
-FROM node:18 AS builder
-WORKDIR /app
-COPY . .
-RUN npm install --legacy-peer-deps && npm run build
+FROM node:18-alpine AS builder
 
-# Production stage
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --legacy-peer-deps
+
+COPY . .
+RUN npm run build
+
 FROM nginx:stable-alpine
+
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY --from=builder /app/nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 EXPOSE 80
+
 CMD ["nginx", "-g", "daemon off;"]
