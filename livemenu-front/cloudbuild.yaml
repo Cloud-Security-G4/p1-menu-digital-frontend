@@ -5,8 +5,8 @@ steps:
     [
       'build',
       '-t',
-      'us-central1-docker.pkg.dev/cloud-security-491400/livemenu/frontend',
-      '.'
+      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend',
+      './livemenu-front'
     ]
 
 - name: 'aquasec/trivy'
@@ -17,9 +17,9 @@ steps:
       '1',
       '--severity',
       'HIGH,CRITICAL',
-      'us-central1-docker.pkg.dev/cloud-security-491400/livemenu/frontend'
+      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend'
     ]
 
 images:
 
-- us-central1-docker.pkg.dev/cloud-security-491400/livemenu/frontend
+- us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend
