@@ -1,0 +1,25 @@
+steps:
+
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+    [
+      'build',
+      '-t',
+      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend',
+      './livemenu-front'
+    ]
+
+- name: 'aquasec/trivy'
+  args:
+    [
+      'image',
+      '--exit-code',
+      '1',
+      '--severity',
+      'HIGH,CRITICAL',
+      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend'
+    ]
+
+images:
+
+- us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend
