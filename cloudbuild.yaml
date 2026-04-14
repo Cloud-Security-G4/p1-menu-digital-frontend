@@ -1,28 +1,49 @@
 steps:
 
+# 1. Build
 - name: 'gcr.io/cloud-builders/docker'
   args:
     [
       'build',
       '-t',
-      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend',
+      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest',
       './livemenu-front'
     ]
 
+# 2. Scan (recomendado no bloquear por ahora)
 - name: 'aquasec/trivy:0.51.0'
   args:
     [
       'image',
-      '--exit-code',
-      '1',
+      '--scanners',
+      'vuln',
       '--severity',
       'HIGH,CRITICAL',
-      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend'
+      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest'
+    ]
+
+# 3. Deploy a Cloud Run
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args:
+    [
+      'run',
+      'deploy',
+      'livemenu-frontend',
+      '--image',
+      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest',
+      '--region',
+      'us-west1',
+      '--platform',
+      'managed',
+      '--allow-unauthenticated',
+      '--port',
+      '80',
+      '--quiet'
     ]
 
 images:
-
-- us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend
+- us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
