@@ -37,8 +37,8 @@ steps:
       '--platform',
       'managed',
       '--allow-unauthenticated',
-      '--port',
-      '80',
+      '--set-env-vars',
+      'PORT=8080,API_URL=https://livemenu-backend-966314369490.us-west1.run.app',
       '--quiet'
     ]
 
