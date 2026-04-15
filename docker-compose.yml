@@ -4,6 +4,8 @@ services:
     build:
       context: ./livemenu-front
     container_name: menu-frontend
+    environment:
+      - PORT=80
     ports:
       - "3000:80"
     networks:
