@@ -5,40 +5,43 @@ steps:
   args:
     [
       'build',
-      '-t',
-      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest',
+      '-t', 'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest',
+      '--build-arg', 'VITE_API_HOST=https://livemenu-backend-966314369490.us-west1.run.app',
       './livemenu-front'
     ]
 
-# 2. Scan (recomendado no bloquear por ahora)
+# 2. Push BEFORE deploy
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+    [
+      'push',
+      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest'
+    ]
+
+# 3. Scan (non-blocking)
 - name: 'aquasec/trivy:0.51.0'
   args:
     [
       'image',
-      '--scanners',
-      'vuln',
-      '--severity',
-      'HIGH,CRITICAL',
+      '--scanners', 'vuln',
+      '--severity', 'HIGH,CRITICAL',
+      '--exit-code', '0',
       'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest'
     ]
 
-# 3. Deploy a Cloud Run
+# 4. Deploy to Cloud Run
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: gcloud
   args:
     [
-      'run',
-      'deploy',
-      'livemenu-frontend',
-      '--image',
-      'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest',
-      '--region',
-      'us-west1',
-      '--platform',
-      'managed',
+      'run', 'deploy', 'livemenu-frontend',
+      '--image', 'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest',
+      '--region', 'us-west1',
+      '--platform', 'managed',
       '--allow-unauthenticated',
-      '--set-env-vars',
-      'API_URL=https://livemenu-backend-966314369490.us-west1.run.app',
+      '--port', '8080',
+      '--memory', '256Mi',
+      '--set-env-vars', 'API_URL=https://livemenu-backend-966314369490.us-west1.run.app',
       '--quiet'
     ]
 

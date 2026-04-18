@@ -8,6 +8,9 @@ RUN npm ci --legacy-peer-deps
 
 COPY . .
 
+ARG VITE_API_HOST
+ENV VITE_API_HOST=$VITE_API_HOST
+
 RUN npm run build
 
 
