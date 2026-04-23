@@ -6,7 +6,7 @@ steps:
     [
       'build',
       '-t', 'us-west1-docker.pkg.dev/cloud-security-491400/livemenu/frontend:latest',
-      '--build-arg', 'VITE_API_HOST=https://livemenu-backend-966314369490.us-west1.run.app',
+      '--build-arg', 'VITE_API_HOST=https://livemenuapp.net',
       './livemenu-front'
     ]
 
@@ -41,7 +41,7 @@ steps:
       '--allow-unauthenticated',
       '--port', '8080',
       '--memory', '256Mi',
-      '--set-env-vars', 'API_URL=https://livemenu-backend-966314369490.us-west1.run.app',
+      '--set-env-vars', 'API_URL=https://livemenuapp.net',
       '--quiet'
     ]
 
